@@ -1,7 +1,7 @@
 
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument } from 'mongoose';
-import { UserRole } from '../users.role.enum';
+import { UserRole, UserStatus } from '../users.role.enum';
 import { IsEnum } from 'class-validator';
 
 
@@ -23,8 +23,19 @@ export class User {
 
     @Prop({ enum: UserRole, required: true })
     role: UserRole;
+    @Prop({ enum: UserStatus, required: true })
+    status: UserStatus;
 
+    @Prop()
+    active: boolean;
 
+    @Prop()
+    OTP: string;
+
+    @Prop()
+    avatar: string;
+    @Prop()
+    OTPExpired: Date;
 
     @Prop({ type: Object })
     createdBy: {

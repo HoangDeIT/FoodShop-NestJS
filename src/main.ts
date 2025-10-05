@@ -22,7 +22,9 @@ async function bootstrap() {
     defaultVersion: ['1', '2'] //v1, v2
   });
   app.useGlobalInterceptors(new TransformInterceptor(reflector));
-  app.useStaticAssets(join(__dirname, '..', 'public'));
+  app.useStaticAssets(join(__dirname, '..', 'public'), {
+    prefix: '/public'
+  });
   app.setBaseViewsDir(join(__dirname, '..', 'views'));
   //config cors
   app.enableCors(

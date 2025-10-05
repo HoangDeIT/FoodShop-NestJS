@@ -8,8 +8,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { softDeletePlugin } from 'soft-delete-plugin-mongoose';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
+import { MailModule } from './mail/mail.module';
+import { FilesModule } from './files/files.module';
 @Module({
-  imports: [AuthModule, UsersModule,
+  imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
