@@ -139,8 +139,8 @@ export class UsersService {
     return await this.userModel.softDelete({ _id: id });
   }
 
-  findOneByUsername(username: string) {
-    return this.userModel.findOne({ email: username });
+  async findOneByUsername(username: string) {
+    return await this.userModel.findOne({ email: username });
   }
   isValidPassword(password: string, hash: string) {
     return compareSync(password, hash);

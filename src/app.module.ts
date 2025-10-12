@@ -10,6 +10,8 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { MailModule } from './mail/mail.module';
 import { FilesModule } from './files/files.module';
+import { ProductsModule } from './products/products.module';
+import { CategoriesModule } from './categories/categories.module';
 @Module({
   imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
@@ -27,6 +29,8 @@ import { FilesModule } from './files/files.module';
     ConfigModule.forRoot({
       isGlobal: true
     }),
+    ProductsModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [AppService,

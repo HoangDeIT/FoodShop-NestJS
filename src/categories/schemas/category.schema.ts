@@ -1,59 +1,39 @@
-
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose, { HydratedDocument } from 'mongoose';
-import { UserRole, UserStatus } from '../users.role.enum';
 
-
-
-export type UserDocument = HydratedDocument<User>;
+export type CategoryDocument = HydratedDocument<Category>;
 
 @Schema({ timestamps: true })
-export class User {
-    @Prop()
+export class Category {
+    @Prop({ required: true, trim: true })
     name: string;
 
-    @Prop({ required: true })
-    email: string;
-
-    @Prop({ required: true })
-    password: string;
+    @Prop()
+    description: string;
 
     @Prop()
-    address: string;
-
-    @Prop({ enum: UserRole, required: true })
-    role: UserRole;
-    @Prop({ enum: UserStatus, required: true })
-    status: UserStatus;
+    image: string;
 
     @Prop()
-    active: boolean;
-
-    @Prop()
-    OTP: string;
-
-    @Prop()
-    avatar: string;
-    @Prop()
-    OTPExpired: Date;
+    icon: string;
 
     @Prop({ type: Object })
     createdBy: {
         _id: mongoose.Schema.Types.ObjectId;
         email: string;
-    }
+    };
 
     @Prop({ type: Object })
     updatedBy: {
         _id: mongoose.Schema.Types.ObjectId;
         email: string;
-    }
+    };
 
     @Prop({ type: Object })
     deletedBy: {
         _id: mongoose.Schema.Types.ObjectId;
         email: string;
-    }
+    };
 
     @Prop()
     createdAt: Date;
@@ -68,4 +48,4 @@ export class User {
     deletedAt: Date;
 }
 
-export const UserSchema = SchemaFactory.createForClass(User);
+export const CategorySchema = SchemaFactory.createForClass(Category);
