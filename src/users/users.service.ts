@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from 'src/decorator/customize';
@@ -10,6 +10,9 @@ import { User as UserEntity, UserDocument } from './schemas/user.schema';
 import aqp from 'api-query-params';
 import mongoose, { isValidObjectId, Types } from 'mongoose';
 import { isEmail } from 'class-validator';
+import { CreateLocationDto } from 'src/locations/dto/create-location.dto';
+import { LocationsService } from 'src/locations/locations.service';
+import { isBuffer } from 'util';
 @Injectable()
 export class UsersService {
   getHashPassword = (password: string) => {
@@ -17,9 +20,12 @@ export class UsersService {
     const hash = hashSync(password, salt);
     return hash;
   }
-  constructor(@InjectModel(UserEntity.name) private userModel: SoftDeleteModel<UserDocument>) { }
+  constructor(@InjectModel(UserEntity.name) private userModel: SoftDeleteModel<UserDocument>,
+    private readonly locationsService: LocationsService,
+
+  ) { }
   async create(createUserDto: CreateUserDto, user?: IUser) {
-    const { name, email, password, address, role, avatar, status } = createUserDto;
+    const { name, email, password, role, avatar, status } = createUserDto;
 
     // 1. Kiểm tra email đã tồn tại chưa
     const isExist = await this.userModel.findOne({ email });
@@ -37,7 +43,6 @@ export class UsersService {
       name,
       email,
       password: hashPassword,
-      address,
       role,
       avatar,
       status,
@@ -140,10 +145,92 @@ export class UsersService {
   }
 
   async findOneByUsername(username: string) {
-    return await this.userModel.findOne({ email: username });
+    return await this.userModel.findOne({ email: username }).populate('location');
+  }
+  async findOneByEmail(username: string) {
+    return await this.userModel.findOne({ email: username }).populate('location').select('-password');
   }
   isValidPassword(password: string, hash: string) {
     return compareSync(password, hash);
   }
+  // 🟢 cập nhật vị trí user (React Native gửi lat/lng)
+  async updateLocation(userId: string, dto: CreateLocationDto) {
+    // 1️⃣ Tìm user hiện tại để lấy location cũ
+    const oldUser = await this.userModel.findById(userId).select('location');
+    if (!oldUser) throw new NotFoundException('User not found');
 
+    const oldLocationId = oldUser.location;
+
+    // 2️⃣ Tạo location mới
+    const newLocation = await this.locationsService.create(dto);
+
+    // 3️⃣ Gán location mới cho user
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { location: newLocation._id },
+        { new: true },
+      )
+      .populate('location')
+      .select('-password');
+
+    if (!updatedUser) throw new NotFoundException('User not found after update');
+
+    // 4️⃣ Xoá location cũ (nếu có)
+    if (oldLocationId) {
+      try {
+        await this.locationsService.remove(oldLocationId as unknown as string);
+      } catch (err) {
+        console.warn(`⚠️ Không thể xoá location cũ: ${oldLocationId}`, err.message);
+      }
+    }
+
+    // 5️⃣ Trả về user + location mới
+    return updatedUser;
+  }
+  async updateSeller(
+    sellerId: string,
+    dto: {
+      name: string;
+      description?: string;
+      avatar?: string;
+      location?: CreateLocationDto;
+    },
+    actor: IUser,
+  ) {
+    if (!isValidObjectId(sellerId))
+      throw new BadRequestException('ID không hợp lệ');
+
+    // 1️⃣ Nếu có location thì tạo mới trong bảng location
+    let locationId: mongoose.Types.ObjectId | undefined;
+    if (dto.location) {
+      const oldUser = await this.userModel.findById(sellerId);
+      oldUser?.location && await this.locationsService.remove(oldUser?.location as unknown as string);
+      const newLoc = await this.locationsService.create(dto.location);
+      locationId = newLoc._id;
+    }
+    // if (dto.avatar === "" || dto.avatar === undefined) {
+    //   delete dto.avatar
+    // }
+    // 2️⃣ Tạo payload update
+    const updatePayload: any = {
+      name: dto.name,
+      description: dto.description,
+      avatar: dto.avatar,
+      updatedBy: { _id: actor._id, email: actor.email },
+    };
+
+    if (locationId) updatePayload.location = locationId;
+
+    // 3️⃣ Update
+    const updated = await this.userModel
+      .findByIdAndUpdate(sellerId, updatePayload, { new: true })
+      .populate('location')
+      .select('-password');
+
+    if (!updated)
+      throw new BadRequestException('Không tìm thấy user để cập nhật');
+
+    return updated;
+  }
 }

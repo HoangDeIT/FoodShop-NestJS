@@ -12,6 +12,7 @@ import { MailModule } from './mail/mail.module';
 import { FilesModule } from './files/files.module';
 import { ProductsModule } from './products/products.module';
 import { CategoriesModule } from './categories/categories.module';
+import { LocationsModule } from './locations/locations.module';
 @Module({
   imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
@@ -31,6 +32,7 @@ import { CategoriesModule } from './categories/categories.module';
     }),
     ProductsModule,
     CategoriesModule,
+    LocationsModule,
   ],
   controllers: [AppController],
   providers: [AppService,

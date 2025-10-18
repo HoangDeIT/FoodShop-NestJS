@@ -1,7 +1,8 @@
 
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { HydratedDocument } from 'mongoose';
+import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { UserRole, UserStatus } from '../users.role.enum';
+import { Location } from 'src/locations/schemas/location.schema';
 
 
 
@@ -30,13 +31,17 @@ export class User {
     active: boolean;
 
     @Prop()
+    description: string;
+
+    @Prop()
     OTP: string;
 
     @Prop()
     avatar: string;
     @Prop()
     OTPExpired: Date;
-
+    @Prop({ type: Types.ObjectId, ref: Location.name })
+    location?: Location;
     @Prop({ type: Object })
     createdBy: {
         _id: mongoose.Schema.Types.ObjectId;

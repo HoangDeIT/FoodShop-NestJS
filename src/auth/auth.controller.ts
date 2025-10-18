@@ -26,7 +26,7 @@ export class AuthController {
   @Auth()
   @Get("/get-profile")
   handleGetProfile(@User() user: IUser) {
-    return user;
+    return this.usersService.findOneByEmail(user.email);
   }
   @Post("/verify-otp")
   @Public()
@@ -61,7 +61,7 @@ export class AuthController {
     const isExist = await this.usersService.findOneByUsername(email);
     if (isExist) throw new BadRequestException("Email already exists");
 
-    const createUserDto = { name, email, password, role: role, status, avatar: "", address: "" };
+    const createUserDto = { name, email, password, role: role, status, avatar: "", description: "" };
     const user = await this.usersService.create(createUserDto);
 
     await this.mailService.sendMail(email, "activate");

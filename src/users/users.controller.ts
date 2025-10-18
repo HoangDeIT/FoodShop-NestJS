@@ -4,6 +4,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Admin, Auth, Customer, Public, Seller, User } from 'src/decorator/customize';
 import { MailService } from 'src/mail/mail.service';
+import { CreateLocationDto } from 'src/locations/dto/create-location.dto';
 
 @Controller('users')
 export class UsersController {
@@ -31,7 +32,26 @@ export class UsersController {
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
+  @Auth()
+  @Patch('/location-update')
+  updateProfile(@Body() dto: CreateLocationDto, @User() user) {
+    return this.usersService.updateLocation(user._id, dto);;
 
+  }
+  @Seller()
+  @Patch('seller/update')
+  async updateSeller(
+    @User() actor, // seller hiện tại
+    @Body()
+    body: {
+      name: string;
+      description?: string;
+      avatar?: string;
+      location?: CreateLocationDto;
+    },
+  ) {
+    return this.usersService.updateSeller(actor._id, body, actor);
+  }
   @Patch(':id')
   @Admin()
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @User() user) {
@@ -42,5 +62,6 @@ export class UsersController {
   remove(@Param('id') id: string, @User() actor) {
     return this.usersService.remove(id, actor);
   }
+  //////
 
 }
