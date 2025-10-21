@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -27,7 +27,7 @@ export class UsersController {
     const qs = new URLSearchParams(query as any).toString();
     return this.usersService.findAll(Number(current) || 1, Number(pageSize) || 10, qs);
   }
-  @Admin()
+  @Auth()
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
@@ -63,5 +63,44 @@ export class UsersController {
     return this.usersService.remove(id, actor);
   }
   //////
+
+  @Auth()
+  @Get('sellers/nearby')
+  async getNearbySellers(
+    @User() actor,
+    @Query('radius') radius?: string,
+    @Query('current') current?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query() query?: Record<string, any>,
+  ) {
+    const user = await this.usersService.findOneByEmail(actor.email);
+
+    const latitude = parseFloat(user?.location?.latitude as any);
+    const longitude = parseFloat(user?.location?.longitude as any);
+    const radiusInKm = radius ? parseFloat(radius) : 10;
+    const currentPage = parseInt(current || '1');
+    const limit = parseInt(pageSize || '10');
+
+    const hasLocation =
+      typeof latitude === 'number' &&
+      typeof longitude === 'number' &&
+      !isNaN(latitude) &&
+      !isNaN(longitude);
+
+    if (!hasLocation) {
+      const qs = new URLSearchParams(query as any).toString();
+      return this.usersService.findAll(currentPage, limit, qs);
+    }
+
+    return this.usersService.findSellersNearby(
+      latitude,
+      longitude,
+      radiusInKm,
+      currentPage,
+      limit,
+      categoryId,
+    );
+  }
 
 }

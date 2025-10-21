@@ -14,7 +14,7 @@ export class ProductsController {
     return this.productsService.create(dto, actor);
   }
 
-  @Admin()
+  @Public()
   @Get()
   findAll(
     @Query('current') current?: string,

@@ -96,7 +96,7 @@ export class UsersService {
   }
 
   async findOne(id: string) {
-    return this.userModel.findById(id).select('-password');
+    return await this.userModel.findById(id).select('-password');
   }
 
   async update(id: string, dto: UpdateUserDto, actor: IUser) {
@@ -233,4 +233,121 @@ export class UsersService {
 
     return updated;
   }
+
+  // async findSellersNearby(
+  //   latitude: number,
+  //   longitude: number,
+  //   radiusInKm = 10,
+  //   currentPage = 1,
+  //   pageSize = 10,
+  //   categoryId?: string,
+  // ) {
+  //   const radiusInMeters = radiusInKm * 1000;
+  //   const skip = (currentPage - 1) * pageSize;
+
+  //   const pipeline: mongoose.PipelineStage[] = [];
+
+  //   // 1️⃣ $geoNear phải đứng đầu
+  //   pipeline.push({
+  //     $geoNear: {
+  //       near: { type: 'Point', coordinates: [longitude, latitude] },
+  //       distanceField: 'distance',
+  //       maxDistance: radiusInMeters,
+  //       spherical: true,
+  //       query: {
+  //         role: 'seller',
+  //         isDeleted: { $ne: true },
+  //       },
+  //     },
+  //   });
+
+  //   // 2️⃣ Nếu có filter theo categoryId ➜ lọc user nào có product theo category
+  //   if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+  //     pipeline.push(
+  //       {
+  //         $lookup: {
+  //           from: 'products',
+  //           localField: '_id',
+  //           foreignField: 'seller',
+  //           as: 'products',
+  //         },
+  //       },
+  //       {
+  //         $match: {
+  //           'products.category': new mongoose.Types.ObjectId(categoryId),
+  //         },
+  //       },
+  //     );
+  //   }
+
+  //   // 3️⃣ Lookup location để trả về locationInfo
+  //   pipeline.push(
+  //     {
+  //       $lookup: {
+  //         from: 'locations',
+  //         localField: 'location',
+  //         foreignField: '_id',
+  //         as: 'locationInfo',
+  //       },
+  //     },
+  //     { $unwind: '$locationInfo' },
+  //     { $sort: { distance: 1 } },
+  //     {
+  //       $facet: {
+  //         result: [
+  //           { $skip: skip },
+  //           { $limit: pageSize },
+  //           {
+  //             $project: {
+  //               name: 1,
+  //               email: 1,
+  //               phone: 1,
+  //               role: 1,
+  //               locationInfo: 1,
+  //               distance: { $divide: ['$distance', 1000] },
+  //             },
+  //           },
+  //           { $unset: ['password', 'locationInfo.__v'] },
+  //         ],
+  //         totalCount: [{ $count: 'count' }],
+  //       },
+  //     }
+
+  //   );
+
+  //   const [data] = await this.userModel.aggregate(pipeline);
+
+  //   const totalItems = data?.totalCount?.[0]?.count || 0;
+  //   const totalPages = Math.ceil(totalItems / pageSize);
+
+  //   return {
+  //     meta: {
+  //       current: currentPage,
+  //       pageSize,
+  //       total: totalItems,
+  //       pages: totalPages,
+  //     },
+  //     result: data.result,
+  //   };
+  // }
+
+  async findSellersNearby(
+    latitude: number,
+    longitude: number,
+    radiusInKm = 10,
+    currentPage = 1,
+    pageSize = 10,
+    categoryId?: string,
+  ) {
+    return this.locationsService.findSellersNearby(
+      latitude,
+      longitude,
+      radiusInKm,
+      currentPage,
+      pageSize,
+      categoryId,
+    );
+  }
+
+
 }

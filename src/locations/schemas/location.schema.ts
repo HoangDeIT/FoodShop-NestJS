@@ -27,3 +27,4 @@ export class Location {
     coordinates: number[];
 }
 export const LocationSchema = SchemaFactory.createForClass(Location);
+LocationSchema.index({ coordinates: '2dsphere' });
