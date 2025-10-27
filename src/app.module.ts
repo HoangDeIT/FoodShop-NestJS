@@ -13,6 +13,10 @@ import { FilesModule } from './files/files.module';
 import { ProductsModule } from './products/products.module';
 import { CategoriesModule } from './categories/categories.module';
 import { LocationsModule } from './locations/locations.module';
+import { LikesModule } from './likes/likes.module';
+import { CommentsModule } from './comments/comments.module';
+import { CartsModule } from './carts/carts.module';
+import { OrdersModule } from './orders/orders.module';
 @Module({
   imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
@@ -33,6 +37,10 @@ import { LocationsModule } from './locations/locations.module';
     ProductsModule,
     CategoriesModule,
     LocationsModule,
+    LikesModule,
+    CommentsModule,
+    CartsModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService,
