@@ -36,6 +36,9 @@ export class User {
     @Prop()
     OTP: string;
 
+    @Prop({ default: false })
+    isOpen: boolean;
+
     @Prop()
     avatar: string;
     @Prop()

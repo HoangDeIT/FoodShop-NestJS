@@ -96,7 +96,7 @@ export class UsersService {
   }
 
   async findOne(id: string) {
-    return await this.userModel.findById(id).select('-password');
+    return await this.userModel.findById(id).select('-password').populate('location');
   }
 
   async update(id: string, dto: UpdateUserDto, actor: IUser) {
@@ -195,6 +195,7 @@ export class UsersService {
       description?: string;
       avatar?: string;
       location?: CreateLocationDto;
+      isOpen?: boolean;
     },
     actor: IUser,
   ) {
@@ -218,6 +219,7 @@ export class UsersService {
       description: dto.description,
       avatar: dto.avatar,
       updatedBy: { _id: actor._id, email: actor.email },
+      isOpen: dto.isOpen,
     };
 
     if (locationId) updatePayload.location = locationId;

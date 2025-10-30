@@ -39,6 +39,8 @@ export class CartItem {
 
     @Prop()
     image?: string;
+    @Prop({ default: false })
+    selected: boolean;
 }
 export const CartItemSchema = SchemaFactory.createForClass(CartItem);
 

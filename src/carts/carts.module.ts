@@ -6,12 +6,13 @@ import { CartsController } from './carts.controller';
 import { CartsService } from './carts.service';
 
 import { ProductsModule } from 'src/products/products.module';
+import { UsersModule } from 'src/users/users.module';
 
 @Module({
   controllers: [CartsController],
   providers: [CartsService],
   imports: [
-    MongooseModule.forFeature([{ name: Cart.name, schema: CartSchema }]),
+    UsersModule,
     ProductsModule
   ],
 })

@@ -1,170 +1,155 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
-import mongoose, { Types } from 'mongoose';
-import { Cart, CartDocument } from './schemas/cart.schema';
+import { Injectable } from '@nestjs/common';
 import { ProductsService } from 'src/products/products.service';
-import { log } from 'console';
+import { UsersService } from 'src/users/users.service';
+
+// ==============================
+// 🧾 Interfaces
+// ==============================
+interface CartItemInput {
+  productId: string;
+  productName: string;
+  basePrice: number;
+  quantity: number;
+  sizeId?: string;
+  sizeName?: string;
+  toppingIds?: string[];
+  toppingNames?: string[];
+}
+
+interface ShopCartInput {
+  shopId: string;
+  items: CartItemInput[];
+}
+
+interface ValidatedCartItem {
+  productId: string;
+  productName: string;
+  basePrice: number;
+  sizePrice: number;
+  toppingPrice: number;
+  quantity: number;
+  totalPrice: number;
+  image?: string;
+  sizeId?: string;
+  sizeName?: string;
+  toppingIds?: string[];
+  toppingNames?: string[];
+}
+
+interface ValidatedShopCart {
+  shopId: string;
+  shopName: string;
+  // avatar?: string; // ❌ Không cần avatar shop trong giỏ hàng
+  totalPrice: number;
+  items: ValidatedCartItem[];
+}
+
+export interface ValidatedCartResponse {
+  shopCarts: ValidatedShopCart[];
+  grandTotal: number;
+}
 
 @Injectable()
 export class CartsService {
   constructor(
-    @InjectModel(Cart.name)
-    private readonly cartModel: SoftDeleteModel<CartDocument>,
-
-
     private readonly productService: ProductsService,
+    private readonly usersService: UsersService,
   ) { }
 
-  // 🛒 Lấy giỏ hàng của user (kể cả nếu đã soft delete thì tạo lại)
-  async getCartByUser(userId: string) {
-    let cart = await this.cartModel.findOne({ customer: userId });
-    if (!cart) {
-      await this.cartModel.create({
-        customer: userId,
-        shopCarts: [],
-        grandTotal: 0,
-      });
-      // ✅ Lấy lại để hydrate đầy đủ schema
-      cart = await this.cartModel.findOne({ customer: userId });
-    }
-    return cart!;
-  }
-
-  // ➕ Thêm sản phẩm vào giỏ
-  async addToCart(userId: string, shopId: string, itemData: any): Promise<Cart> {
-    const product = await this.productService.findOne(itemData.product);
-    if (!product) throw new NotFoundException('Product not found');
-
-    const cart = await this.getCartByUser(userId);
-
-    let shopCart = cart.shopCarts.find(
-      (sc) => sc.shop.toString() === shopId.toString(),
-    );
-
-    if (!shopCart) {
-      shopCart = {
-        shop: new mongoose.Types.ObjectId(shopId),
-        items: [],
-        totalPrice: 0,
-      };
-      cart.shopCarts.push(shopCart as any);
-      shopCart = cart.shopCarts[cart.shopCarts.length - 1];
+  async validateClientCart(
+    cartData: { shopCarts: ShopCartInput[] },
+  ): Promise<ValidatedCartResponse> {
+    if (!cartData?.shopCarts?.length) {
+      return { shopCarts: [], grandTotal: 0 };
     }
 
-    const existingItem = shopCart?.items.find(
-      (i) =>
-        i.product.toString() === itemData.product &&
-        i.sizeId?.toString() === itemData.sizeId &&
-        JSON.stringify(i.toppingIds || []) ===
-        JSON.stringify(itemData.toppingIds || []),
-    );
+    const validatedShops: ValidatedShopCart[] = [];
 
-    if (existingItem) {
-      existingItem.quantity += itemData.quantity;
-      existingItem.totalPrice = existingItem.quantity * existingItem.basePrice;
-    } else {
-      const totalPrice = itemData.quantity * itemData.basePrice;
-      shopCart?.items.push({
-        ...itemData,
-        totalPrice,
-      });
-      console.log('🛒 New item added to cart:', cart.shopCarts);
+    for (const shopCart of cartData.shopCarts) {
+      const shop = await this.usersService.findOne(shopCart.shopId);
+
+      // ❌ Shop bị xóa hoặc tạm đóng
+      if (!shop || shop.isDeleted || shop.isOpen === false) continue;
+
+      const validItems: ValidatedCartItem[] = [];
+
+      for (const item of shopCart.items) {
+        const product = await this.productService.findOne(item.productId);
+
+        // ❌ Sản phẩm không tồn tại / bị xóa / ngưng bán
+        if (!product || product.isDeleted || product.inStock === false) continue;
+
+        let basePrice = product.basePrice;
+        let sizePrice = 0;
+        let toppingPrice = 0;
+        let sizeName = item.sizeName;
+        let toppingNames: string[] = [];
+        const validToppings: string[] = [];
+
+        // 🧩 Kiểm tra size hợp lệ
+        if (item.sizeId) {
+          const size = product.sizes?.find(
+            (s) => s._id.toString() === item.sizeId,
+          );
+          if (size) {
+            sizePrice = size.price || 0;
+            sizeName = size.name;
+          } else {
+            // ❌ Size không tồn tại => loại bỏ item
+            continue;
+          }
+        }
+
+        // 🧩 Kiểm tra topping hợp lệ
+        if (item.toppingIds?.length) {
+          for (const tid of item.toppingIds) {
+            const topping = product.toppings?.find(
+              (t) => t._id.toString() === tid,
+            );
+            if (topping) {
+              validToppings.push(topping._id.toString());
+              toppingNames.push(topping.name);
+              toppingPrice += topping.price || 0;
+            }
+          }
+        }
+
+        // ✅ Cập nhật item hợp lệ
+        const totalUnitPrice = basePrice + sizePrice + toppingPrice;
+        const totalPrice = totalUnitPrice * item.quantity;
+
+        validItems.push({
+          productId: product._id.toString(),
+          productName: product.name,
+          basePrice,
+          sizePrice,
+          toppingPrice,
+          quantity: item.quantity,
+          totalPrice,
+          image: product.image, // 🖼️ Giữ lại ảnh sản phẩm
+          sizeId: item.sizeId,
+          sizeName,
+          toppingIds: validToppings,
+          toppingNames,
+        });
+      }
+
+      // ❗ Chỉ thêm shop nếu có ít nhất 1 item hợp lệ
+      if (validItems.length > 0) {
+        const totalPrice = validItems.reduce((s, i) => s + i.totalPrice, 0);
+        validatedShops.push({
+          shopId: shop._id.toString(),
+          shopName: shop.name,
+          // avatar: shop.avatar, // ❌ Không cần avatar trong giỏ hàng
+          totalPrice,
+          items: validItems,
+        });
+      }
     }
-    console.log('🛒 Cart before recalculating totals:', cart);
-    this.recalculateTotals(cart);
-    const check = await cart.save();
-    console.log('🛒 Cart saved:', cart);
-    console.log('💥 Cart after adding item:', check);
-    return cart;
-  }
 
-  // ✏️ Cập nhật số lượng
-  async updateQuantity(
-    userId: string,
-    shopId: string,
-    itemId: string,
-    quantity: number,
-  ) {
-    const cart = await this.getCartByUser(userId);
-    const shopCart = cart.shopCarts.find(
-      (sc) => sc.shop.toString() === shopId.toString(),
-    );
-    if (!shopCart) throw new NotFoundException('Shop not found');
-    const item = shopCart.items.find(
-      (i: any) => i._id?.toString() === itemId.toString(),
-    );
-    if (!item) throw new NotFoundException('Item not found');
-    item.quantity = quantity;
-    item.totalPrice = item.basePrice * quantity;
+    // 🧮 Tổng toàn bộ
+    const grandTotal = validatedShops.reduce((sum, s) => sum + s.totalPrice, 0);
 
-    this.recalculateTotals(cart);
-    await cart.save();
-    return cart;
-  }
-
-  // ❌ Soft delete toàn bộ giỏ của user
-  async softDeleteCart(userId: string) {
-    const cart = await this.cartModel.findOne({ customer: userId });
-    if (!cart) throw new NotFoundException('Cart not found');
-    await this.cartModel.softDelete({ _id: cart._id });
-    return { message: 'Cart soft deleted' };
-  }
-
-  // ♻️ Khôi phục giỏ hàng đã soft delete
-  async restoreCart(userId: string) {
-    const deletedCart = await (this.cartModel as any).findOneDeleted({ customer: userId });
-    if (!deletedCart) throw new NotFoundException('No deleted cart found');
-    await this.cartModel.restore({ _id: deletedCart[0]._id });
-    return { message: 'Cart restored' };
-  }
-
-  // 💰 Tính tổng
-  recalculateTotals(cart: Cart) {
-    for (const sc of cart.shopCarts) {
-      sc.totalPrice = sc.items.reduce((sum, i) => sum + i.totalPrice, 0);
-    }
-    cart.grandTotal = cart.shopCarts.reduce((sum, sc) => sum + sc.totalPrice, 0);
-  }
-  // ❌ Xoá 1 sản phẩm trong giỏ của 1 shop
-  async removeItem(userId: string, shopId: string, itemId: string) {
-    const cart = await this.getCartByUser(userId);
-
-    const shopCart = cart.shopCarts.find(
-      (sc) => sc.shop.toString() === shopId.toString(),
-    );
-    if (!shopCart) throw new NotFoundException('Shop not found in cart');
-
-    const itemIndex = shopCart.items.findIndex(
-      (i: any) => i._id?.toString() === itemId.toString(),
-    );
-    if (itemIndex === -1) throw new NotFoundException('Item not found');
-
-    shopCart.items.splice(itemIndex, 1);
-
-    // Tính lại tổng
-    this.recalculateTotals(cart);
-
-    await cart.save();
-    return cart;
-  }
-
-  // 🧹 Xoá toàn bộ giỏ hàng của 1 shop
-  async clearShopCart(userId: string, shopId: string) {
-    const cart = await this.getCartByUser(userId);
-
-    const shopIndex = cart.shopCarts.findIndex(
-      (sc) => sc.shop.toString() === shopId.toString(),
-    );
-
-    if (shopIndex === -1) throw new NotFoundException('Shop not found in cart');
-
-    cart.shopCarts.splice(shopIndex, 1);
-
-    // Cập nhật tổng giỏ
-    this.recalculateTotals(cart);
-
-    await cart.save();
-    return cart;
+    return { shopCarts: validatedShops, grandTotal };
   }
 }

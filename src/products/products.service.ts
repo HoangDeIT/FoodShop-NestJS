@@ -52,7 +52,7 @@ export class ProductsService {
 
   async findOne(id: string) {
     if (!isValidObjectId(id)) throw new BadRequestException('Product không hợp lệ');
-    const found = await this.productModel.findById(id);
+    const found = await this.productModel.findById(id).populate('seller');
     if (!found) throw new BadRequestException('Không tìm thấy product');
     return found;
   }

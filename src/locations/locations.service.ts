@@ -4,7 +4,7 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { Location, LocationDocument } from './schemas/location.schema';
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 
 @Injectable()
 export class LocationsService {
@@ -19,6 +19,7 @@ export class LocationsService {
     });
     return doc;
   }
+
 
   findAll() {
     return `This action returns all locations`;

@@ -48,6 +48,7 @@ export class UsersController {
       description?: string;
       avatar?: string;
       location?: CreateLocationDto;
+      isOpen?: boolean;
     },
   ) {
     return this.usersService.updateSeller(actor._id, body, actor);
