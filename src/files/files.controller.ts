@@ -46,4 +46,20 @@ export class FilesController {
             avatars: files.filesUpload?.map(f => f.filename),
         };
     }
+    @Public()
+    @Post('/upload-multiple')
+    @UseInterceptors(FileFieldsInterceptor([
+        { name: 'filesUpload', maxCount: 5 },
+
+    ]))
+    uploadFiles(
+        @UploadedFiles() files: {
+            filesUpload?: Express.Multer.File[],
+
+        }
+    ) {
+        return {
+            fileName: files.filesUpload?.map(f => f.filename),
+        };
+    }
 }

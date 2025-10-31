@@ -16,5 +16,6 @@ import { UsersModule } from 'src/users/users.module';
     ProductsModule, // ✅ inject được ProductsService
     UsersModule, // ✅ inject được UsersService
   ],
+  exports: [OrdersService],
 })
 export class OrdersModule { }

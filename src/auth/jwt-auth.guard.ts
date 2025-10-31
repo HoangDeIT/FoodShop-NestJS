@@ -12,37 +12,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     constructor(private reflector: Reflector) {
         super();
     }
-    // canActivate(context: ExecutionContext) {
-    //     const request = context.switchToHttp().getRequest();
-    //     const user = request.user;
 
-    //     // 1. Public -> ai cũng được
-    //     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-    //         context.getHandler(),
-    //         context.getClass(),
-    //     ]);
-    //     if (isPublic) return true;
-
-    //     // 2. Auth -> chỉ cần login
-    //     const isAuth = this.reflector.getAllAndOverride<boolean>(IS_AUTH_KEY, [
-    //         context.getHandler(),
-    //         context.getClass(),
-    //     ]);
-    //     if (isAuth) return !!user;
-
-    //     // 3. Roles cụ thể
-    //     const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
-    //         context.getHandler(),
-    //         context.getClass(),
-    //     ]);
-
-    //     // API không có annotation gì -> mặc định chặn
-    //     if (!requiredRoles) return false;
-
-    //     // Nếu có roles thì phải check
-    //     if (!user) return false;
-    //     return requiredRoles.includes(user.role);
-    // }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         // 1) Public -> bỏ qua xác thực
@@ -58,7 +28,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
         const request = context.switchToHttp().getRequest();
         const user = request.user;
-
+        if (!user) throw new UnauthorizedException('Chưa đăng nhập');
         // 3) Auth -> chỉ cần login (đến đây Passport đã verify xong)
         const isAuth = this.reflector.getAllAndOverride<boolean>(IS_AUTH_KEY, [
             context.getHandler(),

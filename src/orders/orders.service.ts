@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { ProductsService } from 'src/products/products.service';
 import { CartItemDto, CreateOrderDto } from './dto/create-order.dto';
 import { InjectModel } from '@nestjs/mongoose';
@@ -44,7 +44,10 @@ export class OrdersService {
     const shop = await this.usersService.findOne(shopId);
     // ✅ Kiểm tra cùng shop
     const shopSet = new Set(products.map((p) => p.seller.toString()));
-    if (shopSet.size > 1 || !shopSet.has(shopId)) {
+    if (shopSet.size > 1
+      //  || !shopSet.has(shopId)
+    ) {
+      console.log('shopSet', !shopSet.has(shopId));
       throw new BadRequestException('Các sản phẩm không cùng một cửa hàng.');
     }
 
@@ -137,7 +140,7 @@ export class OrdersService {
       totalPrice += itemTotal;
 
       validatedItems.push({
-        product: product._id,
+        product: product._id ?? new Types.ObjectId(cartItem.productId),
         productName: product.name,
         basePrice,
         sizeId: cartItem.sizeId ? new Types.ObjectId(cartItem.sizeId) : undefined,
@@ -273,5 +276,36 @@ export class OrdersService {
       order,
     };
   }
+  async findOne(filter: any) {
+    const order = await this.orderModel.findOne(filter);
+    if (!order) throw new BadRequestException('Đơn hàng không tồn tại.');
+    return order;
+  }
+  async countPurchasedProductByUser(userId: string, productId: string): Promise<number> {
+    const userObjectId = new Types.ObjectId(userId);
+    const productObjectId = new Types.ObjectId(productId);
+
+    const result = await this.orderModel.aggregate([
+      {
+        $match: {
+          customer: userObjectId, // ✅ ObjectId
+          orderStatus: 'completed',
+          isDeleted: false,
+        },
+      },
+      { $unwind: '$items' },
+      {
+        $match: {
+          'items.product': productObjectId, // ✅ ObjectId
+        },
+      },
+      {
+        $count: 'totalPurchased',
+      },
+    ]);
+
+    return result?.[0]?.totalPurchased || 0;
+  }
+
 
 }
