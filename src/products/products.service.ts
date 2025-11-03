@@ -7,12 +7,16 @@ import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { IUser } from 'src/users/users.interface';
+import { UsersService } from 'src/users/users.service';
+import { LocationsService } from 'src/locations/locations.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectModel(Product.name)
     private productModel: SoftDeleteModel<ProductDocument>,
+    private readonly usersService: UsersService,
+    private readonly locationsService: LocationsService
   ) { }
 
   async create(dto: CreateProductDto, actor?: IUser) {
@@ -127,5 +131,23 @@ export class ProductsService {
       data: product,
     };
   }
-
+  async searchNearestProducts(userId: string, keyword: string, limit = 15) {
+    const user = await this.usersService.findOne(userId);
+    const latitude = parseFloat(user?.location?.latitude as any);
+    const longitude = parseFloat(user?.location?.longitude as any);
+    return this.locationsService.findProductsNearby(keyword, latitude, longitude, limit);
+  }
+  async findSellerProductsNearby(userId: string,
+    radiusInKm = 10,
+    currentPage = 1,
+    pageSize = 10,
+    categoryId?: string,) {
+    const user = await this.usersService.findOne(userId);
+    const latitude = parseFloat(user?.location?.latitude as any);
+    const longitude = parseFloat(user?.location?.longitude as any);
+    return this.locationsService.findSellersWithProductsNearby(latitude, longitude, radiusInKm, currentPage, pageSize, categoryId);
+  }
+  async findNearbySellerTypes(userId: string) {
+    return this.locationsService.findNearbySellerTypes(userId);
+  }
 }

@@ -147,5 +147,32 @@ export class ReviewService {
       remaining: Math.max(0, totalPurchased - totalReviewed),
     };
   }
+  async calculateSellerAverageRating(sellerId: string) {
+    if (!Types.ObjectId.isValid(sellerId)) {
+      throw new NotFoundException('SellerId không hợp lệ.');
+    }
 
+    const [data] = await this.reviewModel.aggregate([
+      {
+        $match: {
+          seller: new Types.ObjectId(sellerId),
+          isDeleted: { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: '$seller',
+          averageRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Nếu chưa có review nào
+    if (!data) {
+      return 0;
+    }
+    return Math.round(data.averageRating * 10) / 10// làm tròn 1 số thập phân
+
+  }
 }

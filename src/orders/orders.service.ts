@@ -9,6 +9,7 @@ import { LocationsService } from 'src/locations/locations.service';
 import { Product } from 'src/products/schemas/product.schema';
 import { UsersService } from 'src/users/users.service';
 import aqp from 'api-query-params';
+import { calculateDistance } from 'src/utils/distance';
 
 interface ValidatedOrderItem {
   product: Types.ObjectId;
@@ -71,7 +72,7 @@ export class OrdersService {
     }
 
     // ✅ Tính khoảng cách (km)
-    const distance = this.calculateDistance(
+    const distance = calculateDistance(
       shopLocation.latitude,
       shopLocation.longitude,
       deliveryLoc.latitude,
@@ -157,23 +158,8 @@ export class OrdersService {
   }
 
   /** 🌍 Tính khoảng cách giữa 2 điểm (theo km) */
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Bán kính Trái Đất (km)
-    const dLat = this.deg2rad(lat2 - lat1);
-    const dLon = this.deg2rad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.deg2rad(lat1)) *
-      Math.cos(this.deg2rad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
 
-  private deg2rad(deg: number): number {
-    return deg * (Math.PI / 180);
-  }
+
 
 
   async findAll(current = 1, pageSize = 10, qs?: string) {
