@@ -6,6 +6,7 @@ import { ProductsModule } from 'src/products/products.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Order, OrderSchema } from './schemas/order.schema';
 import { UsersModule } from 'src/users/users.module';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 @Module({
   controllers: [OrdersController],
@@ -15,6 +16,7 @@ import { UsersModule } from 'src/users/users.module';
     LocationsModule,
     ProductsModule, // ✅ inject được ProductsService
     UsersModule, // ✅ inject được UsersService
+    NotificationsModule
   ],
   exports: [OrdersService],
 })

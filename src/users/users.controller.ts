@@ -16,7 +16,11 @@ export class UsersController {
   create(@Body() createUserDto: CreateUserDto, @User() user) {
     return this.usersService.create(createUserDto, user)
   }
-
+  @Auth()
+  @Post('expo-token')
+  async saveExpoToken(@User() user, @Body('token') token: string) {
+    return this.usersService.saveExpoToken(user._id, token);
+  }
   @Get()
   @Admin()
   findAll(

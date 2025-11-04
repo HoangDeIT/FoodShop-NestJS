@@ -45,6 +45,8 @@ export class User {
     OTPExpired: Date;
     @Prop({ type: Types.ObjectId, ref: Location.name })
     location?: Location;
+    @Prop()
+    expoToken?: string;
     @Prop({ type: Object })
     createdBy: {
         _id: mongoose.Schema.Types.ObjectId;

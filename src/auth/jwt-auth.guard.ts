@@ -12,7 +12,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     constructor(private reflector: Reflector) {
         super();
     }
+    getRequest(context: ExecutionContext): Request {
+        const req = context.switchToHttp().getRequest<Request>();
 
+        // 🟢 Nếu là SSE (EventSource), token sẽ được gửi qua query
+        if (!req.headers.authorization && req.query.token) {
+            req.headers.authorization = `Bearer ${req.query.token}`;
+        }
+
+        return req;
+    }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         // 1) Public -> bỏ qua xác thực

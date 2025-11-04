@@ -10,6 +10,8 @@ import { Product } from 'src/products/schemas/product.schema';
 import { UsersService } from 'src/users/users.service';
 import aqp from 'api-query-params';
 import { calculateDistance } from 'src/utils/distance';
+import { NotificationsService } from 'src/notifications/notifications.service';
+import { ExpoNotifyService } from 'src/notifications/expo-notify.service';
 
 interface ValidatedOrderItem {
   product: Types.ObjectId;
@@ -32,6 +34,8 @@ export class OrdersService {
     private readonly locationService: LocationsService,
     private readonly productsService: ProductsService,
     private readonly usersService: UsersService,
+    private readonly notificationsService: NotificationsService,
+    private readonly expoNotifyService: ExpoNotifyService,
     @InjectModel(Order.name) private orderModel: SoftDeleteModel<OrderDocument>,
   ) { }
 
@@ -98,7 +102,18 @@ export class OrdersService {
       distance,
       shippingCost,
     });
-
+    // 🟢 Gửi realtime notification cho seller
+    this.notificationsService.notifySeller(shopId, {
+      type: 'NEW_ORDER',
+      order: {
+        id: order._id,
+        totalPrice: order.totalPrice,
+        distance: order.distance,
+        shippingCost: order.shippingCost,
+        receiverName: order.receiverName,
+        note: order.note,
+      },
+    });
     return order;
   }
 
@@ -153,6 +168,7 @@ export class OrdersService {
         image: product.image,
       });
     }
+
 
     return { validatedItems, totalPrice };
   }
@@ -225,7 +241,7 @@ export class OrdersService {
   }
   /** 🧭 Cập nhật trạng thái đơn hàng (seller side) */
   async updateStatus(orderId: string, newStatus: string, shopId: string) {
-    const order = await this.orderModel.findById(orderId);
+    const order = await this.orderModel.findById(orderId).populate('customer');
     if (!order) throw new BadRequestException('Đơn hàng không tồn tại.');
 
     // ✅ Kiểm tra quyền sở hữu (đảm bảo đúng shop)
@@ -256,7 +272,28 @@ export class OrdersService {
     // ✅ Cập nhật trạng thái
     order.orderStatus = newStatus;
     await order.save();
+    // 🟢 Gửi SSE realtime tới Customer (nếu đang mở app)
+    const customerId = order.customer?._id?.toString();
+    if (customerId) {
+      this.notificationsService.notifyCustomer(customerId, {
+        type: 'ORDER_STATUS_UPDATE',
+        orderId: order._id,
+        status: newStatus,
+        message: this.getStatusMessage(newStatus),
+      });
+    }
 
+    // 🔵 Gửi Push Notification Expo (khi app tắt / nền)
+    //@ts-ignore
+    const expoToken = order.customer?.expoToken;
+    if (expoToken) {
+      await this.expoNotifyService.sendNotification(
+        expoToken,
+        'Cập nhật đơn hàng',
+        this.getStatusMessage(newStatus),
+        { orderId: order._id, status: newStatus },
+      );
+    }
     return {
       message: `Cập nhật trạng thái đơn hàng thành công (${currentStatus} → ${newStatus})`,
       order,
@@ -293,5 +330,20 @@ export class OrdersService {
     return result?.[0]?.totalPurchased || 0;
   }
 
-
+  private getStatusMessage(status: string): string {
+    switch (status) {
+      case 'confirmed':
+        return 'Đơn hàng của bạn đã được xác nhận 🧾';
+      case 'preparing':
+        return 'Đơn hàng đang được chuẩn bị 🍳';
+      case 'delivering':
+        return 'Đơn hàng đang được giao 🚚';
+      case 'completed':
+        return 'Đơn hàng đã giao thành công 🎉';
+      case 'cancelled':
+        return 'Đơn hàng của bạn đã bị huỷ ❌';
+      default:
+        return `Trạng thái đơn hàng: ${status}`;
+    }
+  }
 }
