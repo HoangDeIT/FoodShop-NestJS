@@ -18,6 +18,7 @@ import { CartsModule } from './carts/carts.module';
 import { OrdersModule } from './orders/orders.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ChatsModule } from './chats/chats.module';
 @Module({
   imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
@@ -43,6 +44,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     OrdersModule,
     ReviewsModule,
     NotificationsModule,
+    ChatsModule,
   ],
   controllers: [AppController],
   providers: [AppService,

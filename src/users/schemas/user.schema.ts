@@ -38,7 +38,11 @@ export class User {
 
     @Prop({ default: false })
     isOpen: boolean;
+    @Prop({ default: false })
+    isOnline: boolean;
 
+    @Prop()
+    lastActive?: Date;
     @Prop()
     avatar: string;
     @Prop()
