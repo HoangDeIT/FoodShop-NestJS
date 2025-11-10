@@ -7,6 +7,7 @@ import { Conversation, ConversationSchema } from './schemas/conversation.schema'
 import { ChatsController } from './chats.controller';
 import { User, UserSchema } from 'src/users/schemas/user.schema';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { OpenAiModule } from 'src/open-ai/open-ai.module';
 
 @Module({
   controllers: [ChatsController],
@@ -17,7 +18,8 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
       { name: Conversation.name, schema: ConversationSchema },
       { name: User.name, schema: UserSchema }
     ]),
-    NotificationsModule
+    NotificationsModule,
+    OpenAiModule
   ],
 })
 export class ChatsModule { }

@@ -8,18 +8,21 @@ export type ConversationDocument = HydratedDocument<Conversation>;
 export class Conversation {
     @Prop({ type: [{ type: Types.ObjectId, ref: User.name }], required: true })
     participants: Types.ObjectId[]; // [userA, userB]
-
     @Prop({
         type: {
-            type: { type: String, enum: ['text', 'image'] },
-            data: String,
+            type: {
+                type: String,
+                enum: ['text', 'image', 'store', 'product', 'ai_text'],
+                default: 'text',
+            },
+            data: mongoose.Schema.Types.Mixed, // cho phép string hoặc object JSON
             senderId: { type: Types.ObjectId, ref: User.name },
             createdAt: Date,
         },
     })
     lastMessage?: {
-        type: 'text' | 'image';
-        data: string;
+        type: 'text' | 'image' | 'store' | 'product' | 'ai_text';
+        data: any; // có thể là string hoặc object { intent, message, data }
         senderId: Types.ObjectId;
         createdAt: Date;
     };

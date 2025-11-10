@@ -13,11 +13,15 @@ export class Message {
     @Prop({ type: Types.ObjectId, ref: User.name, required: true })
     senderId: Types.ObjectId;
 
-    @Prop({ enum: ['text', 'image'], required: true })
-    type: 'text' | 'image';
+    @Prop({ enum: ['text', 'image', 'store', 'product', 'ai_text'], required: true })
+    type: 'text' | 'image' | 'store' | 'product' | 'ai_text';
 
-    @Prop({ required: true })
-    data: string; // text hoặc image URL
+    @Prop({ type: mongoose.Schema.Types.Mixed })
+    data: string | {
+        intent: string;
+        message: string;
+        data?: any;
+    };
 
     @Prop({ default: false })
     isRead: boolean;

@@ -267,7 +267,10 @@ export class LocationsService {
       },
     ];
 
-    const [data] = await this.locationModel.aggregate(pipeline);
+    const [data] = await this.locationModel
+      .aggregate(pipeline)
+      .collation({ locale: 'vi', strength: 1 }); // ✅ Bỏ phân biệt hoa/thường & dấu
+
 
     const totalItems = data?.totalCount?.[0]?.count || 0;
     const totalPages = Math.ceil(totalItems / pageSize);
@@ -453,7 +456,10 @@ export class LocationsService {
       },
     ];
 
-    const [data] = await this.locationModel.aggregate(pipeline);
+    const [data] = await this.locationModel
+      .aggregate(pipeline)
+      .collation({ locale: 'vi', strength: 1 }); // ✅ Bỏ phân biệt hoa/thường & dấu
+
 
     const totalItems = data?.totalCount?.[0]?.count || 0;
     const totalPages = Math.ceil(totalItems / pageSize);

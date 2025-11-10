@@ -19,6 +19,7 @@ import { OrdersModule } from './orders/orders.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChatsModule } from './chats/chats.module';
+import { OpenAiModule } from './open-ai/open-ai.module';
 @Module({
   imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
@@ -45,6 +46,7 @@ import { ChatsModule } from './chats/chats.module';
     ReviewsModule,
     NotificationsModule,
     ChatsModule,
+    OpenAiModule,
   ],
   controllers: [AppController],
   providers: [AppService,

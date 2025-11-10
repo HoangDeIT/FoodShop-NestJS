@@ -11,6 +11,9 @@ import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { User, UserDocument } from 'src/users/schemas/user.schema';
 import { InjectModel } from '@nestjs/mongoose';
 import { Interval } from '@nestjs/schedule';
+import { config } from 'process';
+import { ConfigService } from '@nestjs/config';
+import { AiOrchestratorService } from 'src/open-ai/ai-orchestrator.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -22,6 +25,8 @@ export class ChatsGateway {
   constructor(private readonly chatsService: ChatsService,
     @InjectModel(User.name)
     private userModel: SoftDeleteModel<UserDocument>,
+    private configService: ConfigService,
+    private readonly aiOrchestratorService: AiOrchestratorService
   ) { }
 
 
@@ -46,7 +51,6 @@ export class ChatsGateway {
     }
   }
 
-
   // Khi user connect
   async handleConnection(client: Socket) {
     const userId = client.handshake.query.userId as string;
@@ -59,6 +63,8 @@ export class ChatsGateway {
     this.lastPing.set(userId, Date.now());
     console.log(`✅ User ${userId} connected`);
     this.server.emit("user_online", { userId, isOnline: true });
+    // ⚡ Gọi hàm auto tạo conversation với bot
+    await this.ensureBotConversation(userId);
   }
 
   // Khi user disconnect
@@ -106,6 +112,8 @@ export class ChatsGateway {
     this.server.to(payload.conversationId).emit('receive_message', message);
     await this.updateLastActive(payload.senderId);
     await this.chatsService.notifyIfOffline(payload);
+    // 2️⃣ Nếu trong conversation có bot → gọi hàm xử lý riêng
+    await this.handleBotReply(payload.conversationId, payload.data);
     return message;
 
   }
@@ -130,8 +138,10 @@ export class ChatsGateway {
   @SubscribeMessage("user_typing")
   handleTyping(
     @MessageBody() payload: { conversationId: string; userId: string; userName: string },
+    @ConnectedSocket() client: Socket,
   ) {
-    this.server.to(payload.conversationId).emit("user_typing", payload);
+    // 👇 chỉ gửi tới những người khác trong room
+    client.broadcast.to(payload.conversationId).emit("user_typing", payload);
   }
 
   // ✋ Khi user dừng nhập
@@ -146,6 +156,92 @@ export class ChatsGateway {
       lastActive: new Date(),
       isOnline: true,
     }).exec();
+  }
+  ////Chatbot logic
+  // ✅ Hàm tách riêng cho clean
+  private async ensureBotConversation(userId: string) {
+    const BOT_ID = this.configService.get<string>('BOT_ID')!;
+    try {
+      const user = await this.userModel.findById(userId).lean();
+      if (!user || user.role !== 'customer') return;
+
+      // 🔍 Gọi qua hàm service mới
+      const convo = await this.chatsService.createConversation(userId, BOT_ID);
+
+      // 💬 Nếu conversation mới (chưa có lastMessage) thì gửi lời chào
+      if (!convo.lastMessage) {
+        await this.chatsService.createMessage({
+          conversationId: convo._id.toString(),
+          senderId: BOT_ID,
+          type: 'text',
+          data: 'Xin chào  👋! Mình là Chatbot AI, có thể giúp gì cho bạn nè?',
+        });
+      }
+
+      console.log(`🤖 Auto-created Chatbot conversation for user ${user.name}`);
+    } catch (err) {
+      console.error('❌ Lỗi tạo Chatbot conversation:', err);
+    }
+  }
+
+  private async handleBotReply(conversationId: string, userMessage: string) {
+    try {
+      // 1️⃣ Lấy conversation để tìm bot
+      const conversation = await this.chatsService['conversationModel']
+        .findById(conversationId)
+        .populate('participants', '_id name role');
+
+      const bot = (conversation?.participants as any[]).find(
+        (p) => p.role === 'bot' || p.name?.toLowerCase().includes('chatbot'),
+      );
+      if (!bot) return;
+
+      // 2️⃣ Gọi AI orchestrator để xử lý
+      const user = (conversation?.participants as any[]).find(
+        (p) => p.role === 'customer',
+      );
+      if (!user) return;
+
+      // 🧠 Gọi AI logic trung tâm (đã có detectIntent, normalize, v.v.)
+      const aiResponse = await this.aiOrchestratorService.handleUserMessage(
+        userMessage,
+        user._id.toString(),
+      );
+
+      // 3️⃣ Tạo message AI lưu vào DB
+      const aiMessage = await this.chatsService.createMessage({
+        conversationId,
+        senderId: bot._id.toString(), // bot gửi
+        type: this.mapIntentToType(aiResponse.intent),
+        data: {
+          intent: aiResponse.intent,
+          message: aiResponse.message,
+          data: aiResponse.data?.result ?? aiResponse.data, // structured data (nếu có)
+        },
+      });
+
+      // 4️⃣ Emit về client
+      this.server.to(conversationId).emit('receive_message', aiMessage);
+
+      console.log(`🤖 Bot replied [${aiResponse.intent}]: ${aiResponse.message}`);
+    } catch (err) {
+      console.error('❌ Bot reply error:', err);
+    }
+  }
+
+  private mapIntentToType(intent: string): 'text' | 'product' | 'store' | 'ai_text' {
+    switch (intent) {
+      case 'find_product':
+        return 'product';
+      case 'find_store':
+      case 'best_seller':
+      case 'best_rating':
+        return 'store';
+      case 'order_status':
+      case 'order_summary':
+      default:
+        return 'ai_text';
+    }
   }
 
 }

@@ -25,14 +25,20 @@ export class ChatsService {
   async createMessage(data: {
     conversationId: string;
     senderId: string;
-    type: 'text' | 'image';
-    data: string;
+    type: 'text' | 'product' | 'store' | 'ai_text' | 'image';
+    data: string | {
+      intent: string;
+      message: string;
+      data?: any,
+
+    };
   }) {
     const message = await this.messageModel.create({
       conversationId: new Types.ObjectId(data.conversationId),
       senderId: new Types.ObjectId(data.senderId),
       type: data.type,
       data: data.data,
+      createdAt: new Date(),
     });
 
     // Cập nhật lastMessage
@@ -40,7 +46,7 @@ export class ChatsService {
       lastMessage: {
         type: data.type,
         data: data.data,
-        senderId: data.senderId,
+        senderId: new Types.ObjectId(data.senderId),
         createdAt: new Date(),
       },
       updatedAt: new Date(),
