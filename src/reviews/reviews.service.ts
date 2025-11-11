@@ -4,12 +4,15 @@ import mongoose, { Types } from 'mongoose';
 import { Review, ReviewDocument } from './schemas/review.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { OrdersService } from 'src/orders/orders.service';
+import aqp from 'api-query-params';
+import { Product, ProductDocument } from 'src/products/schemas/product.schema';
 
 @Injectable()
 export class ReviewService {
   constructor(
     @InjectModel(Review.name) private readonly reviewModel: SoftDeleteModel<ReviewDocument>,
-    private readonly orderService: OrdersService
+    private readonly orderService: OrdersService,
+    @InjectModel(Product.name) private readonly productModel: SoftDeleteModel<ProductDocument>,
   ) { }
 
   /**
@@ -175,4 +178,303 @@ export class ReviewService {
     return Math.round(data.averageRating * 10) / 10// làm tròn 1 số thập phân
 
   }
+  async getReviewsForSellerGrouped(
+    sellerId: string,
+    currentPage = 1,
+    limit = 10,
+    qs: string,
+  ) {
+    const { filter, sort } = aqp(qs || '');
+    delete filter.current;
+    delete filter.pageSize;
+    delete filter.status;
+
+    const page = Math.max(1, +currentPage || 1);
+    const pageSize = Math.max(1, +limit || 10);
+    const offset = (page - 1) * pageSize;
+
+    const sellerObjectId = new Types.ObjectId(sellerId);
+
+    // 🔹 Lấy danh sách product của seller
+    const products = await this.productModel.find(
+      { seller: sellerObjectId, isDeleted: false },
+      { _id: 1 },
+    );
+    if (!products.length) throw new NotFoundException('Bạn chưa có sản phẩm nào.');
+    const productIds = products.map((p) => p._id);
+
+    // 🔹 Lọc theo trạng thái
+    const qsObj = typeof qs === 'string' ? new URLSearchParams(qs) : qs;
+    const status = qsObj['status'] || 'all';
+
+    const match: any = {
+      product: { $in: productIds },
+      isDeleted: false,
+    };
+
+    if (status === 'replied') {
+      match.replies = { $elemMatch: { user: sellerObjectId, isDeleted: { $ne: true } } };
+    } else if (status === 'unreplied') {
+      match.replies = { $not: { $elemMatch: { user: sellerObjectId, isDeleted: { $ne: true } } } };
+    }
+
+    // 🔹 Pipeline aggregation
+    const pipeline: mongoose.PipelineStage[] = [
+      { $match: match },
+      // Populate user (người viết review)
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+      // Populate replies.user
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'replies.user',
+          foreignField: '_id',
+          as: 'replyUsers',
+        },
+      },
+      // Map replies.user thành object user đầy đủ
+      {
+        $addFields: {
+          replies: {
+            $map: {
+              input: '$replies',
+              as: 'rep',
+              in: {
+                _id: '$$rep._id',
+                comment: '$$rep.comment',
+                createdAt: '$$rep.createdAt',
+                isDeleted: '$$rep.isDeleted',
+                user: {
+                  $arrayElemAt: [
+                    {
+                      $filter: {
+                        input: '$replyUsers',
+                        as: 'ru',
+                        cond: { $eq: ['$$ru._id', '$$rep.user'] },
+                      },
+                    },
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      { $project: { replyUsers: 0, 'user.password': 0 } },
+      // Lookup product info
+      {
+        $lookup: {
+          from: 'products',
+          localField: 'product',
+          foreignField: '_id',
+          as: 'product',
+        },
+      },
+      { $unwind: '$product' },
+      {
+        $group: {
+          _id: '$product._id',
+          product: { $first: '$product' },
+          reviews: {
+            $push: {
+              _id: '$_id',
+              user: '$user',
+              rating: '$rating',
+              comment: '$comment',
+              images: '$images',
+              replies: '$replies',
+              createdAt: '$createdAt',
+            },
+          },
+          totalReviews: { $sum: 1 },
+          avgRating: { $avg: '$rating' },
+        },
+      },
+      { $sort: { 'product.name': 1 } },
+      { $skip: offset },
+      { $limit: pageSize },
+    ];
+
+    const result = await this.reviewModel.aggregate(pipeline);
+
+    // Tổng số sản phẩm có review
+    const totalProducts = await this.reviewModel.distinct('product', match);
+    const totalPages = Math.ceil(totalProducts.length / pageSize);
+
+    return {
+      meta: {
+        current: page,
+        pageSize,
+        pages: totalPages,
+        total: totalProducts.length,
+      },
+      result,
+    };
+  }
+
+  // async getReviewsForSellerGrouped(
+  //   sellerId: string,
+  //   currentPage = 1,
+  //   limit = 10,
+  //   qs: string,
+  // ) {
+  //   const { filter, sort } = aqp(qs || '');
+  //   delete filter.current;
+  //   delete filter.pageSize;
+
+  //   const page = Math.max(1, +currentPage || 1);
+  //   const pageSize = Math.max(1, +limit || 10);
+  //   const offset = (page - 1) * pageSize;
+
+  //   const sellerObjectId = new Types.ObjectId(sellerId);
+
+  //   // 1️⃣ Lấy sản phẩm thuộc seller
+  //   const products = await this.productModel.find(
+  //     { seller: sellerObjectId, isDeleted: false },
+  //     { _id: 1 },
+  //   );
+  //   if (!products.length) throw new NotFoundException('Bạn chưa có sản phẩm nào.');
+  //   const productIds = products.map((p) => p._id);
+
+  //   // 2️⃣ Trạng thái replied / unreplied
+  //   const qsObj = typeof qs === 'string' ? new URLSearchParams(qs) : qs;
+  //   const status = qsObj['status'] || 'all';
+
+  //   const match: any = {
+  //     product: { $in: productIds },
+  //     isDeleted: false,
+  //   };
+
+  //   if (status === 'replied') {
+  //     match.replies = { $elemMatch: { user: sellerObjectId, isDeleted: { $ne: true } } };
+  //   } else if (status === 'unreplied') {
+  //     match.replies = { $not: { $elemMatch: { user: sellerObjectId, isDeleted: { $ne: true } } } };
+  //   }
+
+  //   // 3️⃣ Pipeline aggregation
+  //   const pipeline: mongoose.PipelineStage[] = [
+  //     { $match: match },
+  //     {
+  //       $lookup: {
+  //         from: 'products',
+  //         localField: 'product',
+  //         foreignField: '_id',
+  //         as: 'product',
+  //       },
+  //     },
+  //     { $unwind: '$product' },
+  //     {
+  //       $group: {
+  //         _id: '$product._id',
+  //         product: { $first: '$product' },
+  //         reviews: { $push: '$$ROOT' },
+  //         totalReviews: { $sum: 1 },
+  //         avgRating: { $avg: '$rating' },
+  //       },
+  //     },
+  //     { $sort: { 'product.name': 1 } },
+  //     { $skip: offset },
+  //     { $limit: pageSize },
+  //   ];
+
+  //   const result = await this.reviewModel.aggregate(pipeline);
+
+  //   // 4️⃣ Tính tổng số group (distinct product)
+  //   const totalProducts = await this.reviewModel.distinct('product', match);
+  //   const totalPages = Math.ceil(totalProducts.length / pageSize);
+
+  //   return {
+  //     meta: {
+  //       current: page,
+  //       pageSize,
+  //       pages: totalPages,
+  //       total: totalProducts.length,
+  //     },
+  //     result,
+  //   };
+  // }
+
+  // async getReviewsForSeller(
+  //   sellerId: string,
+  //   currentPage = 1,
+  //   limit = 10,
+  //   qs: string,
+  // ) {
+  //   const { filter, sort, population } = aqp(qs || '');
+  //   delete filter.current;
+  //   delete filter.pageSize;
+
+
+  //   const page = Math.max(1, +currentPage || 1);
+  //   const pageSize = Math.max(1, +limit || 10);
+  //   const offset = (page - 1) * pageSize;
+
+  //   const sellerObjectId = new Types.ObjectId(sellerId);
+
+  //   // 1️⃣ Lấy tất cả sản phẩm thuộc seller
+  //   const products = await this.productModel.find(
+  //     { seller: sellerObjectId, isDeleted: false },
+  //     { _id: 1 },
+  //   );
+  //   if (!products.length) throw new NotFoundException('Bạn chưa có sản phẩm nào.');
+  //   const productIds = products.map((p) => p._id);
+  //   // 3️⃣ Xử lý filter theo status
+  //   // query param: ?status=all | replied | unreplied
+  //   const qsObj = typeof qs === 'string' ? new URLSearchParams(qs) : qs;
+  //   const status = qsObj['status'] || 'all';
+  //   delete filter.status; // ta xử lý riêng
+  //   // 2️⃣ Base filter cho tất cả review của seller
+  //   const baseFilter: any = {
+  //     product: { $in: productIds },
+  //     isDeleted: false,
+  //     ...filter,
+  //   };
+  //   if (status === 'replied') {
+  //     baseFilter.replies = {
+  //       $elemMatch: { user: sellerObjectId, isDeleted: { $ne: true } },
+  //     };
+  //   }
+  //   // unreplied: KHÔNG có reply của seller (tức là không tồn tại phần tử replies thỏa điều kiện)
+  //   else if (status === 'unreplied') {
+  //     baseFilter.replies = {
+  //       $not: { $elemMatch: { user: sellerObjectId, isDeleted: { $ne: true } } },
+  //     };
+  //   }
+  //   // 4️⃣ Đếm tổng số
+  //   const totalItems = await this.reviewModel.countDocuments(baseFilter);
+  //   const totalPages = Math.ceil(totalItems / pageSize);
+  //   console.log(filter)
+  //   // 5️⃣ Query dữ liệu
+  //   const query = this.reviewModel
+  //     .find(baseFilter)
+  //     .skip(offset)
+  //     .limit(pageSize)
+  //     .sort((sort as any) || { createdAt: -1 })
+  //     .populate('user', 'name avatar')
+  //     .populate('product', 'name image')
+  //     .populate('replies.user', 'name avatar');
+
+  //   if (population) query.populate(population as any);
+
+  //   const result = await query.exec();
+
+  //   return {
+  //     meta: {
+  //       current: page,
+  //       pageSize,
+  //       pages: totalPages,
+  //       total: totalItems,
+  //     },
+  //     result,
+  //   };
+  // }
 }

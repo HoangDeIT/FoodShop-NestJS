@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Post, Delete } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Delete, Query } from '@nestjs/common';
 import { ReviewService } from './reviews.service';
-import { Auth, Public, User } from 'src/decorator/customize';
+import { Auth, Public, Seller, User } from 'src/decorator/customize';
 import { CreateReviewDto } from './dto/create-review.dto';
 
 @Controller('reviews')
@@ -50,5 +50,15 @@ export class ReviewController {
   async checkCanReview(@Param('productId') productId: string, @User() req) {
     const userId = req._id;
     return this.reviewService.checkCanReview(userId, productId);
+  }
+  @Seller()
+  @Get('seller')
+  async getReviewsForSeller(
+    @User() user,
+    @Query('current') current?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query() qs?: string,
+  ) {
+    return this.reviewService.getReviewsForSellerGrouped(user._id, Number(current) || 1, Number(pageSize) || 10, qs || '');
   }
 }

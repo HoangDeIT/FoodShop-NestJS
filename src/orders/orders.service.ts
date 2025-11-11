@@ -183,8 +183,8 @@ export class OrdersService {
     delete filter.current;
     delete filter.pageSize;
     delete filter.population;
-    delete filter.customerId;
-    delete filter.shopId;
+    // delete filter.customerId;
+    // delete filter.shopId;
     // ép kiểu & kiểm tra
     const page = Math.max(1, +current || 1);
     const limit = Math.max(1, +pageSize || 10);
