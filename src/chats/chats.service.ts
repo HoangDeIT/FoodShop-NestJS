@@ -59,7 +59,7 @@ export class ChatsService {
   async getMessages(conversationId: string) {
     return await this.messageModel
       .find({ conversationId: new Types.ObjectId(conversationId) })
-      .populate("senderId", "name avatar isOnline")
+      .populate("senderId", "name avatar isOnline _id")
       .populate({
         path: "conversationId",                      // ✅ populate conversation
         populate: {
@@ -75,7 +75,7 @@ export class ChatsService {
   async getUserConversations(userId: string) {
     return await this.conversationModel
       .find({ participants: { $in: [userId] } })
-      .populate('participants', 'name avatar isOnline') // 👈 thêm isOnline
+      .populate('participants', 'name avatar isOnline _id') // 👈 thêm isOnline
       .sort({ updatedAt: -1 })
       .exec();
   }

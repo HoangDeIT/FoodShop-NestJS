@@ -86,7 +86,7 @@ export class LikesService {
       user: userObjectId,
       shop: shopObjectId,
     });
-
+    console.log(!!existing)
     return !!existing;
   }
 

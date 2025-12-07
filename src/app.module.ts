@@ -20,6 +20,8 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChatsModule } from './chats/chats.module';
 import { OpenAiModule } from './open-ai/open-ai.module';
+import { SystemMonitorModule } from './system-monitor/system-monitor.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 @Module({
   imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
@@ -47,6 +49,8 @@ import { OpenAiModule } from './open-ai/open-ai.module';
     NotificationsModule,
     ChatsModule,
     OpenAiModule,
+    SystemMonitorModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService,

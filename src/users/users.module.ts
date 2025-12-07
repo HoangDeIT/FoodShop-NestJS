@@ -6,12 +6,14 @@ import { User, UserSchema } from './schemas/user.schema';
 import { MailService } from 'src/mail/mail.service';
 import { LocationsService } from 'src/locations/locations.service';
 import { LocationsModule } from 'src/locations/locations.module';
+import { Review, ReviewSchema } from 'src/reviews/schemas/review.schema';
 
 @Module({
   controllers: [UsersController],
   providers: [UsersService, MailService],
   imports: [MongooseModule.forFeature([
-    { name: User.name, schema: UserSchema }
+    { name: User.name, schema: UserSchema },
+    { name: Review.name, schema: ReviewSchema }
   ]), LocationsModule],
   exports: [UsersService],
 })

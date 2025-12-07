@@ -13,6 +13,7 @@ import { isEmail } from 'class-validator';
 import { CreateLocationDto } from 'src/locations/dto/create-location.dto';
 import { LocationsService } from 'src/locations/locations.service';
 import { isBuffer } from 'util';
+import { Review, ReviewDocument } from 'src/reviews/schemas/review.schema';
 @Injectable()
 export class UsersService {
   getHashPassword = (password: string) => {
@@ -22,6 +23,7 @@ export class UsersService {
   }
   constructor(@InjectModel(UserEntity.name) private userModel: SoftDeleteModel<UserDocument>,
     private readonly locationsService: LocationsService,
+    @InjectModel(Review.name) private reviewModel: SoftDeleteModel<ReviewDocument>,
 
   ) { }
   async create(createUserDto: CreateUserDto, user?: IUser) {
@@ -96,8 +98,62 @@ export class UsersService {
   }
 
   async findOne(id: string) {
-    return await this.userModel.findById(id).select('-password').populate('location');
+    const user = await this.userModel
+      .findById(id)
+      .select('-password')
+      .populate('location')
+      .lean();
+
+    if (!user) return null;
+
+    // Chỉ tính rating cho seller
+    if (user.role !== 'seller') {
+      return {
+        ...user,
+        rating: 0,
+        reviewsCount: 0,
+      };
+    }
+
+    const stats = await this.reviewModel.aggregate([
+      { $match: { isDeleted: false } },
+
+      // Join Product
+      {
+        $lookup: {
+          from: 'products',
+          localField: 'product',
+          foreignField: '_id',
+          as: 'productInfo'
+        }
+      },
+      { $unwind: '$productInfo' },
+
+      // Filter review thuộc seller này
+      {
+        $match: {
+          'productInfo.seller': new mongoose.Types.ObjectId(id)
+        }
+      },
+
+      // Group tính rating + count
+      {
+        $group: {
+          _id: null,
+          avgRating: { $avg: '$rating' },
+          reviewsCount: { $sum: 1 }
+        }
+      }
+    ]);
+
+    return {
+      ...user,
+      rating: stats?.[0]?.avgRating ? Number(stats[0].avgRating.toFixed(1)) : 0,
+      reviewsCount: stats?.[0]?.reviewsCount ?? 0,
+    };
   }
+
+
 
   async update(id: string, dto: UpdateUserDto, actor: IUser) {
     if (!isValidObjectId(id)) {
@@ -260,6 +316,47 @@ export class UsersService {
       categoryId,
     );
   }
+  async updateProfileUser(
+    userId: string,
+    dto: { name?: string; avatar?: string },
+    actor: IUser,
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
 
+    const updatePayload: any = {
+      updatedBy: { _id: actor._id, email: actor.email },
+    };
+
+    if (dto.name) updatePayload.name = dto.name;
+    if (dto.avatar) updatePayload.avatar = dto.avatar;
+
+    const updated = await this.userModel
+      .findByIdAndUpdate(userId, updatePayload, { new: true })
+      .select('-password');
+
+    return updated;
+  }
+
+  async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    // 1️⃣ kiểm tra mật khẩu cũ
+    const isValid = this.isValidPassword(oldPassword, user.password);
+    if (!isValid) throw new BadRequestException('Mật khẩu cũ không đúng');
+
+    // 2️⃣ hash mật khẩu mới
+    const hashed = this.getHashPassword(newPassword);
+
+    user.password = hashed;
+    await user.save();
+
+    return { message: 'Đổi mật khẩu thành công' };
+  }
 
 }

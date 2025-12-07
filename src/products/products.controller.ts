@@ -97,7 +97,7 @@ export class ProductsController {
     return this.productsService.update(id, dto, actor);
   }
 
-  @Admin()
+  @Seller()
   @Delete(':id')
   remove(@Param('id') id: string, @User() actor) {
     return this.productsService.remove(id, actor);

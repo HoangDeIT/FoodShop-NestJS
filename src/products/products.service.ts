@@ -150,4 +150,17 @@ export class ProductsService {
   async findNearbySellerTypes(userId: string) {
     return this.locationsService.findNearbySellerTypes(userId);
   }
+  async increaseProductSold(order: any) {
+    for (const item of order.items) {
+      const productId = item.product;
+      const quantity = item.quantity;
+
+      await this.productModel.findByIdAndUpdate(
+        productId,
+        { $inc: { sold: quantity } },
+        { new: true }
+      );
+    }
+  }
+
 }

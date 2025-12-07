@@ -244,14 +244,12 @@ export class OrdersService {
     const order = await this.orderModel.findById(orderId).populate('customer');
     if (!order) throw new BadRequestException('Đơn hàng không tồn tại.');
 
-    // ✅ Kiểm tra quyền sở hữu (đảm bảo đúng shop)
     if (order.shop.toString() !== shopId.toString()) {
       throw new BadRequestException('Bạn không có quyền thay đổi đơn hàng này.');
     }
 
     const currentStatus = order.orderStatus;
 
-    // 🔹 Danh sách trạng thái hợp lệ
     const allowedTransitions: Record<string, string[]> = {
       pending: ['confirmed', 'cancelled'],
       confirmed: ['preparing', 'cancelled'],
@@ -261,19 +259,25 @@ export class OrdersService {
       cancelled: [],
     };
 
-    // ✅ Kiểm tra xem chuyển trạng thái có hợp lệ không
     const nextStatuses = allowedTransitions[currentStatus] || [];
     if (!nextStatuses.includes(newStatus)) {
       throw new BadRequestException(
-        `Không thể chuyển từ trạng thái "${currentStatus}" sang "${newStatus}".`,
+        `Không thể chuyển từ trạng thái "${currentStatus}" sang "${newStatus}".`
       );
     }
 
-    // ✅ Cập nhật trạng thái
+    // 🔥🔥🔥 LOGIC CẬP NHẬT SOLD CHÍNH XÁC THEO YÊU CẦU 🔥🔥🔥
+    if (newStatus === 'completed' && currentStatus !== 'completed') {
+      await this.productsService.increaseProductSold(order);
+    }
+
     order.orderStatus = newStatus;
     await order.save();
-    // 🟢 Gửi SSE realtime tới Customer (nếu đang mở app)
+
+    // gửi realtime cho customer
     const customerId = order.customer?._id?.toString();
+    //@ts-ignore
+    const pushToken = order.customer?.expoToken;
     if (customerId) {
       this.notificationsService.notifyCustomer(customerId, {
         type: 'ORDER_STATUS_UPDATE',
@@ -281,24 +285,19 @@ export class OrdersService {
         status: newStatus,
         message: this.getStatusMessage(newStatus),
       });
+      if (pushToken) {
+        this.expoNotifyService.sendNotification(
+          pushToken,
+          'Cập nhật đơn hàng',
+          `Đơn hàng #${order._id} đã chuyển sang trạng thái: ${newStatus} `,
+          { orderId: order._id, status: newStatus }
+        );
+      }
     }
 
-    // 🔵 Gửi Push Notification Expo (khi app tắt / nền)
-    //@ts-ignore
-    const expoToken = order.customer?.expoToken;
-    if (expoToken) {
-      await this.expoNotifyService.sendNotification(
-        expoToken,
-        'Cập nhật đơn hàng',
-        this.getStatusMessage(newStatus),
-        { orderId: order._id, status: newStatus },
-      );
-    }
-    return {
-      message: `Cập nhật trạng thái đơn hàng thành công (${currentStatus} → ${newStatus})`,
-      order,
-    };
+    return order;
   }
+
   async findOne(filter: any) {
     const order = await this.orderModel.findOne(filter);
     if (!order) throw new BadRequestException('Đơn hàng không tồn tại.');

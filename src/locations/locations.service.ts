@@ -344,18 +344,30 @@ export class LocationsService {
       {
         $lookup: {
           from: "reviews",
-          localField: "user._id",
-          foreignField: "seller",
+          let: { productIds: "$products._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$product", "$$productIds"] },
+                    { $eq: ["$isDeleted", false] },
+                  ],
+                },
+              },
+            },
+          ],
           as: "reviews",
         },
       },
+
       {
         $addFields: {
           averageRating: {
             $cond: [
               { $gt: [{ $size: "$reviews" }, 0] },
               { $round: [{ $avg: "$reviews.rating" }, 1] },
-              5, // 🟩 Nếu chưa có review nào => mặc định 5 sao
+              5 // default nếu chưa có review
             ],
           },
           totalReviews: { $size: "$reviews" },

@@ -21,6 +21,24 @@ export class UsersController {
   async saveExpoToken(@User() user, @Body('token') token: string) {
     return this.usersService.saveExpoToken(user._id, token);
   }
+  @Auth()
+  @Post('/update-profile')
+  async updateProfileUser(
+    @User() actor,
+    @Body() body: { name?: string; avatar?: string }
+  ) {
+    return this.usersService.updateProfileUser(actor._id, body, actor);
+  }
+
+  @Auth()
+  @Post('/change-password')
+  async changePassword(
+    @User() actor,
+    @Body() body: { oldPassword: string; newPassword: string }
+  ) {
+    return this.usersService.changePassword(actor._id, body.oldPassword, body.newPassword);
+  }
+
   @Get()
   @Admin()
   findAll(
