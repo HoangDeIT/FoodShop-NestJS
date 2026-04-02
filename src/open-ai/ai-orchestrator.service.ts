@@ -17,10 +17,10 @@ export class AiOrchestratorService {
         // 🧠 1️⃣ Gọi AI để lấy thông tin có cấu trúc
         const parsed = await this.brain.detectIntent(userMessage);
 
-        const user = await this.userService.findOne(userId);
+        const user = await this.userService.findOne({ id: userId });
         const userLocation = {
-            lat: user?.location?.latitude!,
-            lng: user?.location?.longitude!,
+            lat: user?.profile?.location?.latitude!,
+            lng: user?.profile?.location?.longitude!,
         };
 
         const intent = parsed.intent || 'unknown';

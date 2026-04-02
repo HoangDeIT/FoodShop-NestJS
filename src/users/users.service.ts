@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from 'src/decorator/customize';
@@ -8,32 +12,47 @@ import { compareSync, genSaltSync, hashSync } from 'bcryptjs';
 import { IUser } from './users.interface';
 import { User as UserEntity, UserDocument } from './schemas/user.schema';
 import aqp from 'api-query-params';
-import mongoose, { isValidObjectId, Types } from 'mongoose';
+import mongoose, { isValidObjectId, Mongoose, Types } from 'mongoose';
 import { isEmail } from 'class-validator';
 import { CreateLocationDto } from 'src/locations/dto/create-location.dto';
 import { LocationsService } from 'src/locations/locations.service';
 import { isBuffer } from 'util';
 import { Review, ReviewDocument } from 'src/reviews/schemas/review.schema';
+import {
+  CustomerProfile,
+  CustomerProfileDocument,
+} from 'src/customer-profiles/schemas/customer-profile.schema';
+import {
+  SellerProfile,
+  SellerProfileDocument,
+} from 'src/seller-profiles/schemas/seller-profile.schema';
+import { UserRole } from './users.role.enum';
 @Injectable()
 export class UsersService {
   getHashPassword = (password: string) => {
     const salt = genSaltSync(10);
     const hash = hashSync(password, salt);
     return hash;
-  }
-  constructor(@InjectModel(UserEntity.name) private userModel: SoftDeleteModel<UserDocument>,
+  };
+  constructor(
+    @InjectModel(UserEntity.name)
+    private userModel: SoftDeleteModel<UserDocument>,
     private readonly locationsService: LocationsService,
-    @InjectModel(Review.name) private reviewModel: SoftDeleteModel<ReviewDocument>,
-
+    @InjectModel(Review.name)
+    private reviewModel: SoftDeleteModel<ReviewDocument>,
+    @InjectModel(CustomerProfile.name)
+    private customerProfileModel: SoftDeleteModel<CustomerProfileDocument>,
+    @InjectModel(SellerProfile.name)
+    private sellerProfileModel: SoftDeleteModel<SellerProfileDocument>,
   ) { }
-  async create(createUserDto: CreateUserDto, user?: IUser) {
+  async create(createUserDto: CreateUserDto, actor?: IUser) {
     const { name, email, password, role, avatar, status } = createUserDto;
 
     // 1. Kiểm tra email đã tồn tại chưa
     const isExist = await this.userModel.findOne({ email });
     if (isExist) {
       throw new BadRequestException(
-        `Email: ${email} đã tồn tại trên hệ thống. Vui lòng sử dụng email khác.`
+        `Email: ${email} đã tồn tại trên hệ thống. Vui lòng sử dụng email khác.`,
       );
     }
 
@@ -48,21 +67,49 @@ export class UsersService {
       role,
       avatar,
       status,
-      createdBy: user && user._id ? {
-        _id: user._id,
-        email: user.email,
-      } : null,
+      createdBy: actor?._id
+        ? {
+          _id: actor._id,
+          email: actor.email,
+        }
+        : null,
     });
+    // 👉 tạo profile
+    await this.createProfileByRole(newUser, actor);
 
     return newUser;
   }
+  private async createProfileByRole(user: UserDocument, actor?: IUser) {
+    switch (user.role) {
 
+      case UserRole.SELLER:
+        await this.sellerProfileModel.create({
+          userId: user._id,
+          shopName: user.name,
+          createdBy: actor
+            ? {
+              _id: actor._id,
+              email: actor.email,
+            }
+            : undefined,
+        });
+        break;
 
+      case UserRole.CUSTOMER:
+        await this.customerProfileModel.create({
+          userId: user._id,
+        });
+        break;
+
+      default:
+        break;
+    }
+  }
   async findAll(currentPage = 1, limit = 10, qs: string) {
     const { filter, sort, population } = aqp(qs || '');
     delete filter.current;
     delete filter.pageSize;
-    console.log("filter", filter)
+    console.log('filter', filter);
     const page = Math.max(1, +currentPage || 1);
     const pageSize = Math.max(1, +limit || 10);
     const offset = (page - 1) * pageSize;
@@ -94,70 +141,67 @@ export class UsersService {
       },
       result,
     };
-
   }
 
-  async findOne(id: string) {
-    const user = await this.userModel
-      .findById(id)
-      .select('-password')
-      .populate('location')
-      .lean();
+  // async findOne(id: string) {
+  //   const user = await this.userModel
+  //     .findById(id)
+  //     .select('-password')
+  //     .populate('location')
+  //     .lean();
 
-    if (!user) return null;
+  //   if (!user) return null;
 
-    // Chỉ tính rating cho seller
-    if (user.role !== 'seller') {
-      return {
-        ...user,
-        rating: 0,
-        reviewsCount: 0,
-      };
-    }
+  //   // Chỉ tính rating cho seller
+  //   if (user.role !== 'seller') {
+  //     return {
+  //       ...user,
+  //       rating: 0,
+  //       reviewsCount: 0,
+  //     };
+  //   }
 
-    const stats = await this.reviewModel.aggregate([
-      { $match: { isDeleted: false } },
+  //   const stats = await this.reviewModel.aggregate([
+  //     { $match: { isDeleted: false } },
 
-      // Join Product
-      {
-        $lookup: {
-          from: 'products',
-          localField: 'product',
-          foreignField: '_id',
-          as: 'productInfo'
-        }
-      },
-      { $unwind: '$productInfo' },
+  //     // Join Product
+  //     {
+  //       $lookup: {
+  //         from: 'products',
+  //         localField: 'product',
+  //         foreignField: '_id',
+  //         as: 'productInfo'
+  //       }
+  //     },
+  //     { $unwind: '$productInfo' },
 
-      // Filter review thuộc seller này
-      {
-        $match: {
-          'productInfo.seller': new mongoose.Types.ObjectId(id)
-        }
-      },
+  //     // Filter review thuộc seller này
+  //     {
+  //       $match: {
+  //         'productInfo.seller': new mongoose.Types.ObjectId(id)
+  //       }
+  //     },
 
-      // Group tính rating + count
-      {
-        $group: {
-          _id: null,
-          avgRating: { $avg: '$rating' },
-          reviewsCount: { $sum: 1 }
-        }
-      }
-    ]);
+  //     // Group tính rating + count
+  //     {
+  //       $group: {
+  //         _id: null,
+  //         avgRating: { $avg: '$rating' },
+  //         reviewsCount: { $sum: 1 }
+  //       }
+  //     }
+  //   ]);
 
-    return {
-      ...user,
-      rating: stats?.[0]?.avgRating ? Number(stats[0].avgRating.toFixed(1)) : 0,
-      reviewsCount: stats?.[0]?.reviewsCount ?? 0,
-    };
-  }
-
-
+  //   return {
+  //     ...user,
+  //     rating: stats?.[0]?.avgRating ? Number(stats[0].avgRating.toFixed(1)) : 0,
+  //     reviewsCount: stats?.[0]?.reviewsCount ?? 0,
+  //   };
+  // }
 
   async update(id: string, dto: UpdateUserDto, actor: IUser) {
     if (!isValidObjectId(id)) {
-      console.log(">>>>check id", id)
+      console.log('>>>>check id', id);
       throw new BadRequestException('User không hợp lệ');
     }
     // delete dto.password;
@@ -165,6 +209,11 @@ export class UsersService {
       ...dto,
       updatedBy: actor ? { _id: actor._id, email: actor.email } : undefined,
     };
+    if (dto.name) updatePayload.name = dto.name;
+    if (dto.email) updatePayload.email = dto.email;
+    if (dto.avatar) updatePayload.avatar = dto.avatar;
+    if (dto.status) updatePayload.status = dto.status;
+    if (dto.role) updatePayload.role = dto.role;
 
     if (dto.password) {
       updatePayload.password = this.getHashPassword((dto as any).password);
@@ -172,7 +221,9 @@ export class UsersService {
 
     const res = await this.userModel
       .findByIdAndUpdate(id, updatePayload, { new: true })
-      .select('-password');
+      .select('-password')
+      .lean();
+
 
     if (!res) throw new BadRequestException('Không tìm thấy user để cập nhật');
     return res;
@@ -186,63 +237,119 @@ export class UsersService {
     if (!found) {
       throw new BadRequestException('Không tìm thấy user để xoá');
     }
-    if (found.role === "admin") {
+    if (found.role === 'admin') {
       throw new BadRequestException('Không thể xoá tài khoản admin');
     }
-    const deletedBy = { _id: actor._id as unknown as mongoose.Schema.Types.ObjectId, email: actor.email }!;
-    await this.userModel.updateOne(
-      { _id: id },
-      { deletedBy }
-
-    );
-
+    const deletedBy = {
+      _id: actor._id as unknown as mongoose.Schema.Types.ObjectId,
+      email: actor.email,
+    };
+    await this.userModel.updateOne({ _id: id }, { deletedBy });
 
     return await this.userModel.softDelete({ _id: id });
   }
 
-  async findOneByUsername(username: string) {
-    return await this.userModel.findOne({ email: username }).populate('location');
+  async findOne(
+    by: { id: string; email?: never } | { email: string; id?: never },
+    options?: { password?: boolean },
+  ) {
+    const includePassword = options?.password === true;
+
+    const query = this.userModel.findOne(
+      'id' in by ? { _id: by.id } : { email: by.email },
+    );
+
+    if (!includePassword) {
+      query.select('-password');
+    }
+
+    const user = await query.lean();
+    if (!user) return null;
+
+    let profile: SellerProfile | CustomerProfile | null = null;
+
+    switch (user.role) {
+      case UserRole.CUSTOMER:
+        profile = await this.customerProfileModel
+          .findOne({ userId: user._id })
+          .populate('location')
+          .lean();
+        break;
+
+      case UserRole.SELLER:
+        profile = await this.sellerProfileModel
+          .findOne({ userId: user._id })
+          .populate('location')
+          .lean();
+        break;
+    }
+
+    return {
+      user: { ...user },
+      profile: profile
+        ? {
+          type: user.role,
+          ...profile,
+        }
+        : null,
+    };
   }
-  async findOneByEmail(username: string) {
-    return await this.userModel.findOne({ email: username }).populate('location').select('-password');
-  }
+
+  // async findOneByEmail(username: string) {
+  //   return await this.userModel.findOne({ email: username }).populate('location').select('-password');
+  // }
   isValidPassword(password: string, hash: string) {
     return compareSync(password, hash);
   }
   // 🟢 cập nhật vị trí user (React Native gửi lat/lng)
   async updateLocation(userId: string, dto: CreateLocationDto) {
-    // 1️⃣ Tìm user hiện tại để lấy location cũ
-    const oldUser = await this.userModel.findById(userId).select('location');
-    if (!oldUser) throw new NotFoundException('User not found');
 
-    const oldLocationId = oldUser.location;
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
 
-    // 2️⃣ Tạo location mới
-    const newLocation = await this.locationsService.create(dto);
+    let profile: CustomerProfileDocument | SellerProfileDocument | null = null;
 
-    // 3️⃣ Gán location mới cho user
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        { location: newLocation._id },
-        { new: true },
-      )
-      .populate('location')
-      .select('-password');
-
-    if (!updatedUser) throw new NotFoundException('User not found after update');
-
-    // 4️⃣ Xoá location cũ (nếu có)
-    if (oldLocationId) {
-      try {
-        await this.locationsService.remove(oldLocationId as unknown as string);
-      } catch (err) {
-        console.warn(`⚠️ Không thể xoá location cũ: ${oldLocationId}`, err.message);
-      }
+    // 1️⃣ lấy profile
+    if (user.role === UserRole.CUSTOMER) {
+      profile = await this.customerProfileModel.findOne({ userId: new Types.ObjectId(userId) });
+    } else if (user.role === UserRole.SELLER) {
+      profile = await this.sellerProfileModel.findOne({ userId: new Types.ObjectId(userId) });
     }
 
-    // 5️⃣ Trả về user + location mới
-    return updatedUser;
+    if (!profile) throw new NotFoundException('Profile not found');
+
+    const oldLocationId = profile.location;
+
+    // 2️⃣ tạo location mới
+    const newLocation = await this.locationsService.create(dto);
+
+    // 3️⃣ update profile (✔ đúng chỗ)
+    let updatedProfile;
+
+    if (user.role === UserRole.CUSTOMER) {
+      updatedProfile = await this.customerProfileModel
+        .findByIdAndUpdate(
+          profile._id,
+          { location: newLocation._id },
+          { new: true }
+        )
+        .populate('location');
+    } else {
+      updatedProfile = await this.sellerProfileModel
+        .findByIdAndUpdate(
+          profile._id,
+          { location: newLocation._id },
+          { new: true }
+        )
+        .populate('location');
+    }
+
+    // 4️⃣ xoá location cũ
+    if (oldLocationId) {
+      await this.locationsService.remove(oldLocationId as any);
+    }
+
+    return updatedProfile;
   }
   async updateSeller(
     sellerId: string,
@@ -258,42 +365,60 @@ export class UsersService {
     if (!isValidObjectId(sellerId))
       throw new BadRequestException('ID không hợp lệ');
 
-    // 1️⃣ Nếu có location thì tạo mới trong bảng location
     let locationId: mongoose.Types.ObjectId | undefined;
+
+    // update location
     if (dto.location) {
-      const oldUser = await this.userModel.findById(sellerId);
-      oldUser?.location && await this.locationsService.remove(oldUser?.location as unknown as string);
+      const oldProfile = await this.sellerProfileModel
+        .findOne({ userId: sellerId })
+        .select('location');
+
+      if (oldProfile?.location) {
+        await this.locationsService.remove(
+          oldProfile.location as unknown as string,
+        );
+      }
+
       const newLoc = await this.locationsService.create(dto.location);
       locationId = newLoc._id;
     }
-    // if (dto.avatar === "" || dto.avatar === undefined) {
-    //   delete dto.avatar
-    // }
-    // 2️⃣ Tạo payload update
-    const updatePayload: any = {
-      name: dto.name,
+
+    // 1️⃣ update user table
+    await this.userModel.findByIdAndUpdate(
+      sellerId,
+      {
+        name: dto.name,
+        avatar: dto.avatar,
+      },
+      { new: true },
+    );
+
+    // 2️⃣ update seller_profile table
+    const profileUpdate: any = {
       description: dto.description,
-      avatar: dto.avatar,
-      updatedBy: { _id: actor._id, email: actor.email },
       isOpen: dto.isOpen,
+      updatedBy: { _id: actor._id, email: actor.email },
     };
 
-    if (locationId) updatePayload.location = locationId;
+    if (locationId) profileUpdate.location = locationId;
 
-    // 3️⃣ Update
-    const updated = await this.userModel
-      .findByIdAndUpdate(sellerId, updatePayload, { new: true })
-      .populate('location')
-      .select('-password');
+    const updatedProfile = await this.sellerProfileModel
+      .findOneAndUpdate(
+        { userId: new Types.ObjectId(sellerId) },
+        profileUpdate,
+        { new: true },
+      )
+      .populate('location');
 
-    if (!updated)
-      throw new BadRequestException('Không tìm thấy user để cập nhật');
+    if (!updatedProfile)
+      throw new BadRequestException('Không tìm thấy seller profile');
 
-    return updated;
+    return updatedProfile;
   }
-
   async saveExpoToken(userId: string, token: string) {
-    const user = await this.userModel.findById(userId);
+    const user = await this.customerProfileModel
+      .findOne({ userId: new Types.ObjectId(userId) })
+      .select('location');
     if (!user) throw new NotFoundException('Không tìm thấy người dùng');
     user.expoToken = token;
     await user.save();

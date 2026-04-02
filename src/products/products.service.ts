@@ -132,9 +132,9 @@ export class ProductsService {
     };
   }
   async searchNearestProducts(userId: string, keyword: string, limit = 15) {
-    const user = await this.usersService.findOne(userId);
-    const latitude = parseFloat(user?.location?.latitude as any);
-    const longitude = parseFloat(user?.location?.longitude as any);
+    const user = await this.usersService.findOne({ id: userId });
+    const latitude = parseFloat(user?.profile?.location?.latitude as any);
+    const longitude = parseFloat(user?.profile?.location?.longitude as any);
     return this.locationsService.findProductsNearby(keyword, latitude, longitude, limit);
   }
   async findSellerProductsNearby(userId: string,
@@ -142,9 +142,9 @@ export class ProductsService {
     currentPage = 1,
     pageSize = 10,
     categoryId?: string,) {
-    const user = await this.usersService.findOne(userId);
-    const latitude = parseFloat(user?.location?.latitude as any);
-    const longitude = parseFloat(user?.location?.longitude as any);
+    const user = await this.usersService.findOne({ id: userId });
+    const latitude = parseFloat(user?.profile?.location?.latitude as any);
+    const longitude = parseFloat(user?.profile?.location?.longitude as any);
     return this.locationsService.findSellersWithProductsNearby(latitude, longitude, radiusInKm, currentPage, pageSize, categoryId);
   }
   async findNearbySellerTypes(userId: string) {

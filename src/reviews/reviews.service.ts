@@ -16,12 +16,12 @@ export class ReviewService {
   ) { }
 
   /**
-    * 🟢 Tạo review mới cho sản phẩm
-    * - Không cần orderId
-    * - Kiểm tra user có mua sản phẩm chưa
-    * - So sánh số lần mua và số lần đã review
-    * - Nếu còn slot thì cho phép review
-    */
+   * 🟢 Tạo review mới cho sản phẩm
+   * - Không cần orderId
+   * - Kiểm tra user có mua sản phẩm chưa
+   * - So sánh số lần mua và số lần đã review
+   * - Nếu còn slot thì cho phép review
+   */
   async createReview(
     userId: string,
     dto: { product: string; rating: number; comment: string; images?: string[] },
@@ -412,7 +412,6 @@ export class ReviewService {
   //   const { filter, sort, population } = aqp(qs || '');
   //   delete filter.current;
   //   delete filter.pageSize;
-
 
   //   const page = Math.max(1, +currentPage || 1);
   //   const pageSize = Math.max(1, +limit || 10);

@@ -15,7 +15,4 @@ export class CreateUserDto {
     status: UserStatus;
     @IsOptional()
     avatar: string;
-
-    @IsOptional()
-    description: string;
 }

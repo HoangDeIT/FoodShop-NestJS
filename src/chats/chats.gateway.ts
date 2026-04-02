@@ -14,6 +14,7 @@ import { Interval } from '@nestjs/schedule';
 import { config } from 'process';
 import { ConfigService } from '@nestjs/config';
 import { AiOrchestratorService } from 'src/open-ai/ai-orchestrator.service';
+import { UsersService } from 'src/users/users.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -25,6 +26,7 @@ export class ChatsGateway {
   constructor(private readonly chatsService: ChatsService,
     @InjectModel(User.name)
     private userModel: SoftDeleteModel<UserDocument>,
+    private usersService: UsersService,
     private configService: ConfigService,
     private readonly aiOrchestratorService: AiOrchestratorService
   ) { }
@@ -130,8 +132,8 @@ export class ChatsGateway {
   }
 
   async isUserOnline(userId: string): Promise<boolean> {
-    const user = await this.userModel.findById(userId, "isOnline").lean();
-    return !!user?.isOnline;
+    const user = await this.usersService.findOne({ id: userId });
+    return !!user?.profile?.isOnline;
   }
 
   // 💬 Khi user đang nhập

@@ -25,8 +25,8 @@ export class AuthController {
   }
   @Auth()
   @Get("/get-profile")
-  handleGetProfile(@User() user: IUser) {
-    return this.usersService.findOneByEmail(user.email);
+  handleGetProfile(@User() user) {
+    return this.usersService.findOne({ id: user._id! });
   }
   @Post("/verify-otp")
   @Public()
@@ -45,8 +45,11 @@ export class AuthController {
   async resetPassword(@Body() body: { email: string; otp: string; newPassword: string }) {
     const { email, otp, newPassword } = body;
     const user = await this.authService.verifyOtp(email, otp);
-    user.password = this.usersService.getHashPassword(newPassword);
-    await user.save();
+    // user.password = this.usersService.getHashPassword(newPassword);
+    await this.usersService.update(user._id as unknown as string, {
+      password: newPassword,
+      // OTPExpired: new Date(Date.now() - 1000),
+    }, user);
     return user;
   }
   @Public()
@@ -58,7 +61,7 @@ export class AuthController {
     if (role === UserRole.ADMIN) {
       throw new BadRequestException("Cannot register with admin role");
     }
-    const isExist = await this.usersService.findOneByUsername(email);
+    const isExist = await this.usersService.findOne({ email });
     if (isExist) throw new BadRequestException("Email already exists");
 
     const createUserDto = { name, email, password, role: role, status, avatar: "", description: "" };

@@ -52,7 +52,7 @@ export class UsersController {
   @Auth()
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+    return this.usersService.findOne({ id: id });
   }
   @Auth()
   @Patch('/location-update')
@@ -97,10 +97,10 @@ export class UsersController {
     @Query('categoryId') categoryId?: string,
     @Query() query?: Record<string, any>,
   ) {
-    const user = await this.usersService.findOneByEmail(actor.email);
+    const user = await this.usersService.findOne({ id: actor._id });
 
-    const latitude = parseFloat(user?.location?.latitude as any);
-    const longitude = parseFloat(user?.location?.longitude as any);
+    const latitude = parseFloat(user?.profile?.location?.latitude as any);
+    const longitude = parseFloat(user?.profile?.location?.longitude as any);
     const radiusInKm = radius ? parseFloat(radius) : 10;
     const currentPage = parseInt(current || '1');
     const limit = parseInt(pageSize || '10');

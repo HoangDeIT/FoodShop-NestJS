@@ -5,11 +5,15 @@ import { InjectModel } from '@nestjs/mongoose';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { Location, LocationDocument } from './schemas/location.schema';
 import mongoose, { Types } from 'mongoose';
+import { SellerProfile, SellerProfileDocument } from 'src/seller-profiles/schemas/seller-profile.schema';
+import { CustomerProfile, CustomerProfileDocument } from 'src/customer-profiles/schemas/customer-profile.schema';
 
 @Injectable()
 export class LocationsService {
   constructor(
     @InjectModel(Location.name) private readonly locationModel: SoftDeleteModel<LocationDocument>,
+    @InjectModel(CustomerProfile.name) private readonly customerProfileModel: SoftDeleteModel<CustomerProfileDocument>,
+    @InjectModel(SellerProfile.name) private readonly sellerProfileModel: SoftDeleteModel<SellerProfileDocument>,
   ) { }
 
   async create(dto: CreateLocationDto) {
@@ -51,73 +55,147 @@ export class LocationsService {
     const radiusInMeters = radiusInKm * 1000;
     const skip = (currentPage - 1) * pageSize;
 
+    // const pipeline: mongoose.PipelineStage[] = [
+    //   // 1️⃣ Tìm các seller có location gần nhất
+    //   {
+    //     $geoNear: {
+    //       near: { type: 'Point', coordinates: [longitude, latitude] },
+    //       distanceField: 'distance',
+    //       maxDistance: radiusInMeters,
+    //       spherical: true,
+    //     },
+    //   },
+
+    //   // 2️⃣ Nối sang user
+    //   {
+    //     $lookup: {
+    //       from: 'users',
+    //       localField: '_id',
+    //       foreignField: 'location',
+    //       as: 'user',
+    //     },
+    //   },
+    //   { $unwind: '$user' },
+
+    //   // 3️⃣ Lọc user có role = seller, đang mở cửa và hoạt động
+    //   {
+    //     $match: {
+    //       'user.role': 'seller',
+    //       'user.isDeleted': { $ne: true },
+    //       'user.isOpen': true,      // ✅ chỉ hiện seller đang mở cửa
+    //       'user.status': 'active',  // ✅ chỉ hiện seller đang hoạt động
+    //     },
+    //   },
+
+    //   // 4️⃣ Nếu có categoryId, lọc theo sản phẩm hợp lệ
+    //   ...(categoryId && mongoose.Types.ObjectId.isValid(categoryId)
+    //     ? [
+    //       {
+    //         $lookup: {
+    //           from: 'products',
+    //           localField: 'user._id',
+    //           foreignField: 'seller',
+    //           as: 'products',
+    //         },
+    //       },
+    //       {
+    //         $addFields: {
+    //           products: {
+    //             $filter: {
+    //               input: '$products',
+    //               as: 'prod',
+    //               cond: {
+    //                 $and: [
+    //                   { $eq: ['$$prod.category', new mongoose.Types.ObjectId(categoryId)] },
+    //                   { $eq: ['$$prod.isDeleted', false] },
+    //                   { $eq: ['$$prod.inStock', true] },
+    //                 ],
+    //               },
+    //             },
+    //           },
+    //         },
+    //       },
+    //       // Ẩn seller không có sản phẩm hợp lệ trong category
+    //       { $match: { 'products.0': { $exists: true } } },
+    //     ]
+    //     : []),
+
+    //   // 5️⃣ Sắp xếp và phân trang
+    //   { $sort: { distance: 1 } },
+    //   {
+    //     $facet: {
+    //       result: [
+    //         { $skip: skip },
+    //         { $limit: pageSize },
+    //         {
+    //           $project: {
+    //             _id: 0,
+    //             distance: { $divide: ['$distance', 1000] }, // km
+    //             address: 1,
+    //             'user._id': 1,
+    //             'user.name': 1,
+    //             'user.email': 1,
+    //             'user.avatar': 1,
+    //             'user.role': 1,
+    //             'user.description': 1,
+    //             'user.location': 1,
+    //             'user.isOpen': 1,
+    //             'user.status': 1,
+    //           },
+    //         },
+    //       ],
+    //       totalCount: [{ $count: 'count' }],
+    //     },
+    //   },
+    // ];
     const pipeline: mongoose.PipelineStage[] = [
-      // 1️⃣ Tìm các seller có location gần nhất
+
+      // 1️⃣ tìm location gần
       {
         $geoNear: {
-          near: { type: 'Point', coordinates: [longitude, latitude] },
-          distanceField: 'distance',
+          near: { type: "Point", coordinates: [longitude, latitude] },
+          distanceField: "distance",
           maxDistance: radiusInMeters,
-          spherical: true,
-        },
+          spherical: true
+        }
       },
 
-      // 2️⃣ Nối sang user
+      // 2️⃣ join seller profile
       {
         $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: 'location',
-          as: 'user',
-        },
+          from: "sellerprofiles",
+          localField: "_id",
+          foreignField: "location",
+          as: "seller"
+        }
       },
-      { $unwind: '$user' },
+      { $unwind: "$seller" },
 
-      // 3️⃣ Lọc user có role = seller, đang mở cửa và hoạt động
+      // 3️⃣ join user
+      {
+        $lookup: {
+          from: "users",
+          localField: "seller.userId",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+      { $unwind: "$user" },
+
+      // 4️⃣ filter
       {
         $match: {
-          'user.role': 'seller',
-          'user.isDeleted': { $ne: true },
-          'user.isOpen': true,      // ✅ chỉ hiện seller đang mở cửa
-          'user.status': 'active',  // ✅ chỉ hiện seller đang hoạt động
-        },
+          "user.role": "seller",
+          "user.isDeleted": { $ne: true },
+          "user.status": "active",
+          "seller.isOpen": true
+        }
       },
 
-      // 4️⃣ Nếu có categoryId, lọc theo sản phẩm hợp lệ
-      ...(categoryId && mongoose.Types.ObjectId.isValid(categoryId)
-        ? [
-          {
-            $lookup: {
-              from: 'products',
-              localField: 'user._id',
-              foreignField: 'seller',
-              as: 'products',
-            },
-          },
-          {
-            $addFields: {
-              products: {
-                $filter: {
-                  input: '$products',
-                  as: 'prod',
-                  cond: {
-                    $and: [
-                      { $eq: ['$$prod.category', new mongoose.Types.ObjectId(categoryId)] },
-                      { $eq: ['$$prod.isDeleted', false] },
-                      { $eq: ['$$prod.inStock', true] },
-                    ],
-                  },
-                },
-              },
-            },
-          },
-          // Ẩn seller không có sản phẩm hợp lệ trong category
-          { $match: { 'products.0': { $exists: true } } },
-        ]
-        : []),
-
-      // 5️⃣ Sắp xếp và phân trang
+      // 5️⃣ sort
       { $sort: { distance: 1 } },
+
+      // 6️⃣ pagination
       {
         $facet: {
           result: [
@@ -126,25 +204,23 @@ export class LocationsService {
             {
               $project: {
                 _id: 0,
-                distance: { $divide: ['$distance', 1000] }, // km
+                distance: { $divide: ["$distance", 1000] },
                 address: 1,
-                'user._id': 1,
-                'user.name': 1,
-                'user.email': 1,
-                'user.avatar': 1,
-                'user.role': 1,
-                'user.description': 1,
-                'user.location': 1,
-                'user.isOpen': 1,
-                'user.status': 1,
-              },
-            },
-          ],
-          totalCount: [{ $count: 'count' }],
-        },
-      },
-    ];
 
+                "user._id": 1,
+                "user.name": 1,
+                "user.avatar": 1,
+
+                "seller.shopName": 1,
+                "seller.description": 1,
+                "seller.isOpen": 1
+              }
+            }
+          ],
+          totalCount: [{ $count: "count" }]
+        }
+      }
+    ];
     const [data] = await this.locationModel.aggregate(pipeline);
 
     const totalItems = data?.totalCount?.[0]?.count || 0;
@@ -173,68 +249,80 @@ export class LocationsService {
     const skip = (currentPage - 1) * pageSize;
 
     const pipeline: mongoose.PipelineStage[] = [
-      // 1️⃣ Tìm các vị trí gần nhất
+
+      // 1️⃣ tìm location gần
       {
         $geoNear: {
-          near: { type: 'Point', coordinates: [longitude, latitude] },
-          distanceField: 'distance',
+          near: { type: "Point", coordinates: [longitude, latitude] },
+          distanceField: "distance",
           maxDistance: radiusInMeters,
           spherical: true,
         },
       },
 
-      // 2️⃣ Liên kết sang user (seller)
+      // 2️⃣ join seller profile
       {
         $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: 'location',
-          as: 'user',
+          from: "sellerprofiles",
+          localField: "_id",
+          foreignField: "location",
+          as: "seller",
         },
       },
-      { $unwind: '$user' },
+      { $unwind: "$seller" },
 
-      // 3️⃣ Lọc seller hợp lệ (mở cửa + active)
+      // 3️⃣ join user
+      {
+        $lookup: {
+          from: "users",
+          localField: "seller.userId",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+
+      // 4️⃣ lọc seller hợp lệ
       {
         $match: {
-          'user.role': 'seller',
-          'user.isDeleted': { $ne: true },
-          'user.isOpen': true,
-          'user.status': 'active',
+          "user.role": "seller",
+          "user.isDeleted": { $ne: true },
+          "user.status": "active",
+          "seller.isOpen": true,
         },
       },
 
-      // 4️⃣ Liên kết sang products của seller đó
+      // 5️⃣ join products
       {
         $lookup: {
-          from: 'products',
-          localField: 'user._id',
-          foreignField: 'seller',
-          as: 'products',
+          from: "products",
+          localField: "user._id",
+          foreignField: "seller",
+          as: "products",
         },
       },
-      { $unwind: '$products' },
+      { $unwind: "$products" },
 
-      // 5️⃣ Lọc theo keyword (tên hoặc mô tả)
+      // 6️⃣ lọc product
       {
         $match: {
           $and: [
             {
               $or: [
-                { 'products.name': { $regex: keyword, $options: 'i' } },
-                { 'products.description': { $regex: keyword, $options: 'i' } },
+                { "products.name": { $regex: keyword, $options: "i" } },
+                { "products.description": { $regex: keyword, $options: "i" } },
               ],
             },
-            { 'products.isDeleted': { $ne: true } },
-            { 'products.inStock': true }, // ✅ chỉ lấy sản phẩm còn hàng
+            { "products.isDeleted": { $ne: true } },
+            { "products.inStock": true },
           ],
         },
       },
 
-      // 6️⃣ Sắp xếp theo khoảng cách
+      // 7️⃣ sort
       { $sort: { distance: 1 } },
 
-      // 7️⃣ Phân trang
+      // 8️⃣ pagination
       {
         $facet: {
           result: [
@@ -243,26 +331,28 @@ export class LocationsService {
             {
               $project: {
                 _id: 0,
-                distance: { $divide: ['$distance', 1000] }, // km
-                address: 1,
-                'user._id': 1,
-                'user.name': 1,
-                'user.avatar': 1,
-                'user.email': 1,
-                'user.description': 1,
-                'user.isOpen': 1,
-                'user.status': 1,
-                'products._id': 1,
-                'products.name': 1,
-                'products.image': 1,
-                'products.basePrice': 1,
-                'products.category': 1,
-                'products.sold': 1,
-                'products.inStock': 1,
+                distance: { $divide: ["$distance", 1000] },
+
+                address: "$address",
+
+                "user._id": 1,
+                "user.name": 1,
+                "user.avatar": 1,
+
+                "seller.shopName": 1,
+                "seller.description": 1,
+
+                "products._id": 1,
+                "products.name": 1,
+                "products.image": 1,
+                "products.basePrice": 1,
+                "products.category": 1,
+                "products.sold": 1,
+                "products.inStock": 1,
               },
             },
           ],
-          totalCount: [{ $count: 'count' }],
+          totalCount: [{ $count: "count" }],
         },
       },
     ];
@@ -296,134 +386,130 @@ export class LocationsService {
   ) {
     const radiusInMeters = radiusInKm * 1000;
     const skip = (currentPage - 1) * pageSize;
-
     const pipeline: mongoose.PipelineStage[] = [
 
-      // 1️⃣ Tìm các seller có location gần nhất
+      // 1️⃣ tìm location gần
       {
         $geoNear: {
           near: { type: "Point", coordinates: [longitude, latitude] },
           distanceField: "distance",
           maxDistance: radiusInMeters,
-          spherical: true,
-        },
+          spherical: true
+        }
       },
 
-      // 2️⃣ Liên kết sang user (seller)
+      // 2️⃣ join seller profile
+      {
+        $lookup: {
+          from: "sellerprofiles",
+          localField: "_id",
+          foreignField: "location",
+          as: "seller"
+        }
+      },
+      { $unwind: "$seller" },
+
+      // 3️⃣ join user
       {
         $lookup: {
           from: "users",
-          localField: "_id",
-          foreignField: "location",
-          as: "user",
-        },
+          localField: "seller.userId",
+          foreignField: "_id",
+          as: "user"
+        }
       },
       { $unwind: "$user" },
 
-      // 3️⃣ Chỉ lấy seller hợp lệ (đang hoạt động và mở cửa)
+      // 4️⃣ filter seller
       {
         $match: {
           "user.role": "seller",
           "user.isDeleted": { $ne: true },
-          "user.isOpen": true,
           "user.status": "active",
-        },
+          "seller.isOpen": true
+        }
       },
 
-      // 4️⃣ Lấy sản phẩm của từng seller
+      // 5️⃣ lấy products hợp lệ luôn trong lookup
       {
         $lookup: {
           from: "products",
-          localField: "user._id",
-          foreignField: "seller",
-          as: "products",
-        },
-      },
-
-      // 🟩 5️⃣ Liên kết sang reviews để tính trung bình rating
-      {
-        $lookup: {
-          from: "reviews",
-          let: { productIds: "$products._id" },
+          let: { sellerId: "$user._id" },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $in: ["$product", "$$productIds"] },
+                    { $eq: ["$seller", "$$sellerId"] },
                     { $eq: ["$isDeleted", false] },
-                  ],
-                },
-              },
+                    { $eq: ["$inStock", true] },
+                    ...(categoryId
+                      ? [{ $eq: ["$category", new mongoose.Types.ObjectId(categoryId)] }]
+                      : [])
+                  ]
+                }
+              }
             },
+            {
+              $project: {
+                name: 1,
+                image: 1,
+                basePrice: 1,
+                sold: 1,
+                inStock: 1
+              }
+            }
           ],
-          as: "reviews",
-        },
+          as: "products"
+        }
+      },
+
+      // 6️⃣ chỉ giữ seller có product
+      {
+        $match: { "products.0": { $exists: true } }
+      },
+
+      // 7️⃣ rating theo seller
+      {
+        $lookup: {
+          from: "reviews",
+          let: { sellerProducts: "$products._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$product", "$$sellerProducts"] },
+                    { $eq: ["$isDeleted", false] }
+                  ]
+                }
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                avgRating: { $avg: "$rating" },
+                totalReviews: { $sum: 1 }
+              }
+            }
+          ],
+          as: "rating"
+        }
       },
 
       {
         $addFields: {
           averageRating: {
-            $cond: [
-              { $gt: [{ $size: "$reviews" }, 0] },
-              { $round: [{ $avg: "$reviews.rating" }, 1] },
-              5 // default nếu chưa có review
-            ],
+            $ifNull: [{ $round: [{ $arrayElemAt: ["$rating.avgRating", 0] }, 1] }, 5]
           },
-          totalReviews: { $size: "$reviews" },
-        },
+          totalReviews: {
+            $ifNull: [{ $arrayElemAt: ["$rating.totalReviews", 0] }, 0]
+          }
+        }
       },
 
-
-      // (sau đó là phần lọc theo category như cũ)
-
-      // 5️⃣ Lọc theo category (nếu có)
-      ...(categoryId && mongoose.Types.ObjectId.isValid(categoryId)
-        ? [
-          {
-            $addFields: {
-              products: {
-                $filter: {
-                  input: "$products",
-                  as: "prod",
-                  cond: {
-                    $and: [
-                      { $eq: ["$$prod.category", new mongoose.Types.ObjectId(categoryId)] },
-                      { $eq: ["$$prod.isDeleted", false] },
-                      { $eq: ["$$prod.inStock", true] }, // ✅ chỉ lấy sản phẩm còn hàng
-                    ],
-                  },
-                },
-              },
-            },
-          },
-        ]
-        : [
-          {
-            $addFields: {
-              products: {
-                $filter: {
-                  input: "$products",
-                  as: "prod",
-                  cond: {
-                    $and: [
-                      { $eq: ["$$prod.isDeleted", false] },
-                      { $eq: ["$$prod.inStock", true] }, // ✅ chỉ lấy sản phẩm còn hàng
-                    ],
-                  },
-                },
-              },
-            },
-          },
-        ]),
-
-      // 6️⃣ Chỉ lấy seller có ít nhất 1 sản phẩm hợp lệ
-      { $match: { "products.0": { $exists: true } } },
-
-      // 7️⃣ Sắp xếp theo khoảng cách
       { $sort: { distance: 1 } },
 
-      // 8️⃣ Phân trang
       {
         $facet: {
           result: [
@@ -432,42 +518,26 @@ export class LocationsService {
             {
               $project: {
                 _id: 0,
-                distance: { $divide: ["$distance", 1000] }, // km
+                distance: { $divide: ["$distance", 1000] },
                 address: 1,
-                averageRating: 1,   // 🟩 Thêm dòng này
-                totalReviews: 1,    // 🟩 Và dòng này
+                averageRating: 1,
+                totalReviews: 1,
+
                 seller: {
                   _id: "$user._id",
                   name: "$user.name",
-                  avatar: "$user.avatar",
-                  email: "$user.email",
-                  description: "$user.description",
-                  isOpen: "$user.isOpen",
-                  status: "$user.status",
+                  avatar: "$user.avatar"
                 },
-                products: {
-                  $map: {
-                    input: "$products",
-                    as: "p",
-                    in: {
-                      _id: "$$p._id",
-                      name: "$$p.name",
-                      image: "$$p.image",
-                      basePrice: "$$p.basePrice",
-                      sold: "$$p.sold",
-                      inStock: "$$p.inStock",
-                    },
-                  },
-                },
-              },
-            },
 
+                products: 1
+              }
+            }
           ],
-          totalCount: [{ $count: "count" }],
-        },
-      },
-    ];
+          totalCount: [{ $count: "count" }]
+        }
+      }
 
+    ];
     const [data] = await this.locationModel
       .aggregate(pipeline)
       .collation({ locale: 'vi', strength: 1 }); // ✅ Bỏ phân biệt hoa/thường & dấu
@@ -491,259 +561,304 @@ export class LocationsService {
     const radiusInKm = 10;
     const radiusInMeters = radiusInKm * 1000;
 
-    const user = await this.locationModel
-      .aggregate([
-        {
-          $lookup: {
-            from: 'users',
-            localField: '_id',
-            foreignField: 'location',
-            as: 'user',
-          },
-        },
-        { $unwind: '$user' },
-        { $match: { 'user._id': new mongoose.Types.ObjectId(userId) } },
-        { $limit: 1 },
-      ])
-      .then((res) => res[0]);
+    // 1️⃣ lấy location của user
+    const userProfile = await this.customerProfileModel
+      .findOne({ userId: new Types.ObjectId(userId) })
+      .populate("location")
+      .lean();
 
-    if (!user || !user.coordinates)
-      throw new NotFoundException('Không tìm thấy vị trí người dùng.');
+    if (!userProfile?.location?.coordinates)
+      throw new NotFoundException("Không tìm thấy vị trí người dùng");
 
-    const coordinates = user.coordinates;
+    const coordinates: [number, number] = [
+      userProfile.location.coordinates[0],
+      userProfile.location.coordinates[1]
+    ];
 
-    const baseGeoPipeline: mongoose.PipelineStage[] = [
+    const pipeline: mongoose.PipelineStage[] = [
+
+      // 🔹 tìm location gần
       {
         $geoNear: {
-          near: { type: 'Point', coordinates },
-          distanceField: 'distance',
+          near: { type: "Point", coordinates },
+          distanceField: "distance",
           spherical: true,
-          maxDistance: radiusInMeters,
-        },
+          maxDistance: radiusInMeters
+        }
       },
+
+      // 🔹 join seller profile
       {
         $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: 'location',
-          as: 'seller',
-        },
+          from: "sellerprofiles",
+          localField: "_id",
+          foreignField: "location",
+          as: "sellerProfile"
+        }
       },
-      { $unwind: '$seller' },
+      { $unwind: "$sellerProfile" },
+
+      // 🔹 join user
+      {
+        $lookup: {
+          from: "users",
+          localField: "sellerProfile.userId",
+          foreignField: "_id",
+          as: "seller"
+        }
+      },
+      { $unwind: "$seller" },
+
+      // 🔹 filter seller hợp lệ
       {
         $match: {
-          'seller.role': 'seller',
-          'seller.isDeleted': { $ne: true },
-          'seller.status': 'active',
-        },
+          "seller.role": "seller",
+          "seller.isDeleted": { $ne: true },
+          "seller.status": "active",
+          "sellerProfile.isOpen": true
+        }
       },
-    ];
 
-    // 🔸 1. Seller bán chạy nhất
-    const topSellingPipeline: mongoose.PipelineStage[] = [
-      ...baseGeoPipeline,
+      // 🔹 join products
       {
         $lookup: {
-          from: 'products',
-          localField: 'seller._id',
-          foreignField: 'seller',
-          as: 'products',
-        },
-      },
-      {
-        $addFields: {
-          totalSold: { $sum: '$products.sold' },
-        },
-      },
-      { $sort: { totalSold: -1, distance: 1 } },
-      { $limit: limit },
-      {
-        $project: {
-          distance: { $divide: ['$distance', 1000] },
-          totalSold: 1,
-          seller: {
-            _id: 1,
-            name: 1,
-            avatar: 1,
-            email: 1,
-            description: 1,
-          },
-        },
-      },
-    ];
-
-    const topSelling = await this.locationModel.aggregate(topSellingPipeline);
-
-    // 🔸 2. Seller user đã thích
-    const likedPipeline: mongoose.PipelineStage[] = [
-      ...baseGeoPipeline,
-
-      // 1️⃣ Liên kết likes để lấy những ai đã thích seller
-      {
-        $lookup: {
-          from: 'likes',
-          localField: 'seller._id',
-          foreignField: 'shop',
-          as: 'likes',
-        },
-      },
-
-      // 2️⃣ Lọc chỉ giữ lại like của user hiện tại
-      {
-        $addFields: {
-          likedByCurrentUser: {
-            $filter: {
-              input: '$likes',
-              as: 'like',
-              cond: {
-                $and: [
-                  { $eq: ['$$like.user', new mongoose.Types.ObjectId(userId)] },
-                  { $eq: ['$$like.isDeleted', false] },
-                ],
-              },
+          from: "products",
+          let: { sellerId: "$seller._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$seller", "$$sellerId"] },
+                    { $eq: ["$isDeleted", false] }
+                  ]
+                }
+              }
             },
-          },
-        },
+            {
+              $project: {
+                sold: 1
+              }
+            }
+          ],
+          as: "products"
+        }
       },
 
-      // 3️⃣ Chỉ lấy seller có ít nhất 1 like của user này
-      {
-        $match: {
-          'likedByCurrentUser.0': { $exists: true },
-        },
-      },
-
-      // 4️⃣ Sắp xếp và giới hạn
-      { $sort: { likeCount: -1, distance: 1 } },
-      { $limit: limit },
-
-      // 5️⃣ Trả về dữ liệu cần thiết
-      {
-        $project: {
-          distance: { $divide: ['$distance', 1000] },
-          seller: {
-            _id: '$seller._id',
-            name: '$seller.name',
-            email: '$seller.email',
-            avatar: '$seller.avatar',
-            description: '$seller.description',
-          },
-          likeCount: { $size: '$likes' }, // tổng like toàn shop (nếu cần)
-        },
-      },
-    ];
-
-    const liked = await this.locationModel.aggregate(likedPipeline);
-    // 🔸 3. Seller user từng order
-    const orderedPipeline: mongoose.PipelineStage[] = [
-      ...baseGeoPipeline,
-
-      // 🔹 join sang orders
+      // 🔹 join reviews
       {
         $lookup: {
-          from: 'orders',
-          localField: 'seller._id',
-          foreignField: 'shop', // ✅ đúng field theo schema bạn gửi
-          as: 'orders',
-        },
-      },
-
-      // 🔹 lọc những đơn hàng của user hiện tại
-      {
-        $addFields: {
-          userOrders: {
-            $filter: {
-              input: '$orders',
-              as: 'order',
-              cond: {
-                $and: [
-                  { $eq: ['$$order.customer', new mongoose.Types.ObjectId(userId)] },
-                  { $eq: ['$$order.isDeleted', false] },
-                ],
-              },
+          from: "reviews",
+          let: { productIds: "$products._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$product", "$$productIds"] },
+                    { $eq: ["$isDeleted", false] }
+                  ]
+                }
+              }
             },
-          },
-        },
+            {
+              $group: {
+                _id: null,
+                avgRating: { $avg: "$rating" },
+                totalReviews: { $sum: 1 }
+              }
+            }
+          ],
+          as: "rating"
+        }
       },
 
-      // 🔹 chỉ lấy seller có ít nhất 1 đơn hàng của user này
-      {
-        $match: {
-          'userOrders.0': { $exists: true },
-        },
-      },
-
-      // 🔹 sắp xếp theo khoảng cách gần nhất
-      { $sort: { totalOrders: -1, distance: 1 } },
-      { $limit: limit },
-
-      // 🔹 hiển thị dữ liệu cần
-      {
-        $project: {
-          distance: { $divide: ['$distance', 1000] },
-          totalOrders: { $size: '$userOrders' },
-          seller: {
-            _id: '$seller._id',
-            name: '$seller.name',
-            avatar: '$seller.avatar',
-            email: '$seller.email',
-            description: '$seller.description',
-          },
-        },
-      },
-    ];
-
-    const ordered = await this.locationModel.aggregate(orderedPipeline);
-
-    // 🔸 4. Seller có rating cao nhất
-    const topRatedPipeline: mongoose.PipelineStage[] = [
-      ...baseGeoPipeline,
+      // 🔹 join likes
       {
         $lookup: {
-          from: 'products',
-          localField: 'seller._id',
-          foreignField: 'seller',
-          as: 'products',
-        },
+          from: "likes",
+          let: { shopId: "$seller._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$shop", "$$shopId"] },
+                    { $eq: ["$user", new mongoose.Types.ObjectId(userId)] },
+                    { $eq: ["$isDeleted", false] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "liked"
+        }
       },
-      // { $unwind: '$products' },
+
+      // 🔹 join orders
       {
         $lookup: {
-          from: 'reviews',
-          localField: 'products._id',
-          foreignField: 'product',
-          as: 'reviews',
-        },
+          from: "orders",
+          let: { shopId: "$seller._id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$shop", "$$shopId"] },
+                    { $eq: ["$customer", new mongoose.Types.ObjectId(userId)] },
+                    { $eq: ["$isDeleted", false] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "orders"
+        }
       },
+
+      // 🔹 tính toán
       {
         $addFields: {
-          avgRating: { $avg: '$reviews.rating' },
-        },
-      },
-      { $sort: { avgRating: -1, distance: 1 } },
-      { $limit: limit },
-      {
-        $project: {
-          distance: { $divide: ['$distance', 1000] },
-          avgRating: { $ifNull: ['$avgRating', 0] },
-          seller: {
-            _id: 1,
-            name: 1,
-            avatar: 1,
-            email: 1,
-            description: 1,
+          totalSold: { $sum: "$products.sold" },
+
+          avgRating: {
+            $ifNull: [
+              { $arrayElemAt: ["$rating.avgRating", 0] },
+              0
+            ]
           },
-        },
+
+          totalReviews: {
+            $ifNull: [
+              { $arrayElemAt: ["$rating.totalReviews", 0] },
+              0
+            ]
+          },
+
+          likedByUser: { $gt: [{ $size: "$liked" }, 0] },
+
+          totalOrders: { $size: "$orders" }
+        }
       },
+
+      // 🔹 tách thành 4 list
+      {
+        $facet: {
+
+          topSelling: [
+            { $sort: { totalSold: -1, distance: 1 } },
+            { $limit: limit },
+            {
+              $project: {
+                _id: "$seller._id",
+
+                seller: {
+                  _id: "$seller._id",
+                  name: "$seller.name",
+                  email: "$seller.email",
+                  avatar: "$seller.avatar",
+                  role: "$seller.role",
+                  status: "$seller.status",
+
+                  // 👇 lấy từ profile
+                  isOpen: "$sellerProfile.isOpen"
+                },
+
+                totalSold: 1,
+
+                // 🔥 convert sang km
+                distance: { $divide: ["$distance", 1000] }
+              }
+            }
+          ],
+
+          liked: [
+            { $match: { likedByUser: true } },
+            { $sort: { distance: 1 } },
+            { $limit: limit },
+            {
+              $project: {
+                _id: "$seller._id",
+
+                seller: {
+                  _id: "$seller._id",
+                  name: "$seller.name",
+                  avatar: "$seller.avatar",
+                  email: "$seller.email",
+                  role: "$seller.role",
+                  status: "$seller.status",
+                  isOpen: "$sellerProfile.isOpen"
+                },
+
+                likeCount: { $size: "$liked" },
+
+                distance: { $divide: ["$distance", 1000] }
+              }
+            }
+          ],
+
+          ordered: [
+            { $match: { totalOrders: { $gt: 0 } } },
+            { $sort: { totalOrders: -1, distance: 1 } },
+            { $limit: limit },
+            {
+              $project: {
+                _id: "$seller._id",
+
+                seller: {
+                  _id: "$seller._id",
+                  name: "$seller.name",
+                  avatar: "$seller.avatar",
+                  email: "$seller.email",
+                  role: "$seller.role",
+                  status: "$seller.status",
+                  isOpen: "$sellerProfile.isOpen"
+                },
+
+                totalOrders: 1,
+
+                distance: { $divide: ["$distance", 1000] }
+              }
+            }
+          ],
+
+          topRated: [
+            { $sort: { avgRating: -1, distance: 1 } },
+            { $limit: limit },
+            {
+              $project: {
+                _id: "$seller._id",
+
+                seller: {
+                  _id: "$seller._id",
+                  name: "$seller.name",
+                  avatar: "$seller.avatar",
+                  email: "$seller.email",
+                  role: "$seller.role",
+                  status: "$seller.status",
+                  isOpen: "$sellerProfile.isOpen"
+                },
+
+                avgRating: 1,
+
+                distance: { $divide: ["$distance", 1000] }
+              }
+            }
+          ]
+
+        }
+      }
+
     ];
 
-    const topRated = await this.locationModel.aggregate(topRatedPipeline);
+    const [data] = await this.locationModel.aggregate(pipeline);
 
     return {
-      topSelling,
-      liked,
-      ordered,
-      topRated,
+      topSelling: data?.topSelling || [],
+      liked: data?.liked || [],
+      ordered: data?.ordered || [],
+      topRated: data?.topRated || []
     };
   }
 

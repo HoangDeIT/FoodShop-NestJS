@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import mongoose, { Types } from 'mongoose';
 import { ProductsService } from 'src/products/products.service';
 import { CartItemDto, CreateOrderDto } from './dto/create-order.dto';
@@ -12,6 +12,7 @@ import aqp from 'api-query-params';
 import { calculateDistance } from 'src/utils/distance';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { ExpoNotifyService } from 'src/notifications/expo-notify.service';
+import { CustomerProfile, CustomerProfileDocument } from 'src/customer-profiles/schemas/customer-profile.schema';
 
 interface ValidatedOrderItem {
   product: Types.ObjectId;
@@ -37,6 +38,7 @@ export class OrdersService {
     private readonly notificationsService: NotificationsService,
     private readonly expoNotifyService: ExpoNotifyService,
     @InjectModel(Order.name) private orderModel: SoftDeleteModel<OrderDocument>,
+    @InjectModel(CustomerProfile.name) private customerProfileModel: SoftDeleteModel<CustomerProfileDocument>,
   ) { }
 
   async create(dto: CreateOrderDto, customerId: string) {
@@ -45,11 +47,18 @@ export class OrdersService {
     if (!items?.length) throw new BadRequestException('Không có sản phẩm nào trong đơn hàng.');
 
     // 🧾 Lấy sản phẩm thật từ DB
-    const products = await Promise.all(items.map((i) => this.productsService.findOne(i.productId)));
-    const shop = await this.usersService.findOne(shopId);
+    const products = await Promise.all(
+      items.map((i) => this.productsService.findOne(i.productId)),
+    );
+    const result = await this.usersService.findOne({ id: shopId });
+    if (!result) {
+      throw new NotFoundException('User not found');
+    }
+    const { profile, user } = result;
     // ✅ Kiểm tra cùng shop
     const shopSet = new Set(products.map((p) => p.seller.toString()));
-    if (shopSet.size > 1
+    if (
+      shopSet.size > 1
       //  || !shopSet.has(shopId)
     ) {
       console.log('shopSet', !shopSet.has(shopId));
@@ -57,20 +66,25 @@ export class OrdersService {
     }
 
     // ✅ Tính giá dựa trên dữ liệu thật
-    const { validatedItems, totalPrice } = this.calculateOrderItems(items, products);
+    const { validatedItems, totalPrice } = this.calculateOrderItems(
+      items,
+      products,
+    );
 
     // ✅ Tạo location người nhận
     let locationId: Types.ObjectId | undefined;
     let deliveryLoc: any = null;
     if (location?.latitude && location?.longitude) {
-      const locationCreated = await this.locationService.create({ ...location });
+      const locationCreated = await this.locationService.create({
+        ...location,
+      });
       locationId = locationCreated._id;
       deliveryLoc = locationCreated;
     }
 
     // ✅ Lấy vị trí shop (giả lập: dùng 1 điểm cố định, hoặc query từ seller nếu có)
     // const shopLocation = await this.locationService.findById(shop?.location?.toString() || '');
-    const shopLocation = shop?.location;
+    const shopLocation = profile?.location;
     if (!shopLocation) {
       throw new BadRequestException('Không tìm thấy vị trí cửa hàng.');
     }
@@ -83,7 +97,9 @@ export class OrdersService {
       deliveryLoc.longitude,
     );
     if (distance > 10) {
-      throw new BadRequestException('Khoảng cách giao hàng vượt quá 10km, vui lòng chọn cửa hàng gần hơn.');
+      throw new BadRequestException(
+        'Khoảng cách giao hàng vượt quá 10km, vui lòng chọn cửa hàng gần hơn.',
+      );
     }
     // ✅ Tính phí ship
     const shippingCost = Math.round(distance * this.SHIPPING_RATE);
@@ -125,7 +141,9 @@ export class OrdersService {
     let totalPrice = 0;
 
     for (const cartItem of items) {
-      const product = products.find((p) => p._id.toString() === cartItem.productId);
+      const product = products.find(
+        (p) => p._id.toString() === cartItem.productId,
+      );
       if (!product) throw new BadRequestException('Sản phẩm không tồn tại');
 
       const basePrice = product.basePrice ?? 0;
@@ -241,7 +259,12 @@ export class OrdersService {
   }
   /** 🧭 Cập nhật trạng thái đơn hàng (seller side) */
   async updateStatus(orderId: string, newStatus: string, shopId: string) {
-    const order = await this.orderModel.findById(orderId).populate('customer');
+    const order = await this.orderModel.findById(orderId);
+    const profile = await this.customerProfileModel.findOne({
+      userId: new Types.ObjectId(order?.customer),
+    });
+
+    const pushToken = profile?.expoToken;
     if (!order) throw new BadRequestException('Đơn hàng không tồn tại.');
 
     if (order.shop.toString() !== shopId.toString()) {
@@ -276,8 +299,8 @@ export class OrdersService {
 
     // gửi realtime cho customer
     const customerId = order.customer?._id?.toString();
-    //@ts-ignore
-    const pushToken = order.customer?.expoToken;
+    // //@ts-ignore
+    // const pushToken = order.customer?.expoToken;
     if (customerId) {
       this.notificationsService.notifyCustomer(customerId, {
         type: 'ORDER_STATUS_UPDATE',

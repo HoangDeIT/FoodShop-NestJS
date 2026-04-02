@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ProductsService } from 'src/products/products.service';
+import { SellerProfile } from 'src/seller-profiles/schemas/seller-profile.schema';
 import { UsersService } from 'src/users/users.service';
 
 // ==============================
@@ -66,10 +67,11 @@ export class CartsService {
     const validatedShops: ValidatedShopCart[] = [];
 
     for (const shopCart of cartData.shopCarts) {
-      const shop = await this.usersService.findOne(shopCart.shopId);
-
+      const shop = await this.usersService.findOne({ id: shopCart.shopId });
+      if (!shop) continue;
+      const profile = shop.profile as SellerProfile;
       // ❌ Shop bị xóa hoặc tạm đóng
-      if (!shop || shop.isDeleted || shop.isOpen === false) continue;
+      if (!shop || profile.isOpen === false) continue;
 
       const validItems: ValidatedCartItem[] = [];
 
@@ -77,7 +79,8 @@ export class CartsService {
         const product = await this.productService.findOne(item.productId);
 
         // ❌ Sản phẩm không tồn tại / bị xóa / ngưng bán
-        if (!product || product.isDeleted || product.inStock === false) continue;
+        if (!product || product.isDeleted || product.inStock === false)
+          continue;
 
         let basePrice = product.basePrice;
         let sizePrice = 0;
@@ -138,8 +141,8 @@ export class CartsService {
       if (validItems.length > 0) {
         const totalPrice = validItems.reduce((s, i) => s + i.totalPrice, 0);
         validatedShops.push({
-          shopId: shop._id.toString(),
-          shopName: shop.name,
+          shopId: shop.profile?.userId.toString() || '',
+          shopName: shop.user.name,
           // avatar: shop.avatar, // ❌ Không cần avatar trong giỏ hàng
           totalPrice,
           items: validItems,
