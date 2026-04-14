@@ -22,6 +22,7 @@ import { ChatsModule } from './chats/chats.module';
 import { OpenAiModule } from './open-ai/open-ai.module';
 import { SystemMonitorModule } from './system-monitor/system-monitor.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { VoiceAgentModule } from './voice-agent/voice-agent.module';
 @Module({
   imports: [AuthModule, UsersModule, MailModule, FilesModule,
     MongooseModule.forRootAsync({
@@ -51,6 +52,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     OpenAiModule,
     SystemMonitorModule,
     DashboardModule,
+    VoiceAgentModule,
   ],
   controllers: [AppController],
   providers: [AppService,

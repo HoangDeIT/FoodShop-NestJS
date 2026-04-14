@@ -22,9 +22,20 @@ export class SellerProfile {
 
   @Prop({ default: false })
   isOnline: boolean;
+  @Prop({ default: 0 })
+  likeCount: number;
 
+  @Prop({ default: 0 })
+  orderCount: number;
+
+  @Prop({ default: 0 })
+  rating: number;
+
+  @Prop({ default: 0 })
+  totalReviews: number;
   @Prop()
   lastActive?: Date;
+
 
   @Prop({ type: Object })
   createdBy?: {
