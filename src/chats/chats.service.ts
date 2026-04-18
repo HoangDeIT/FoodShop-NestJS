@@ -136,5 +136,15 @@ export class ChatsService {
       );
     }
   }
-
+  async getRecentMessages(conversationId: string, limit = 3) {
+    return await this.messageModel
+      .find({
+        conversationId: new Types.ObjectId(conversationId),
+        isDeleted: false,
+      })
+      .populate("senderId", "name avatar isOnline _id")
+      .sort({ createdAt: -1 }) // mới nhất trước
+      .limit(limit)
+      .lean();
+  }
 }

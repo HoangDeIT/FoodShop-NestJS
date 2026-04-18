@@ -31,10 +31,11 @@ export class BrainService {
   //     return JSON.parse(res.choices[0].message.content!);
   //   } 
 
-  async plan(dto: any) {
+  async plan(dto: VoiceRequestDto) {
     // 👉 hardcode để test trước (sau thay bằng GPT)
-
-    if (dto.message.includes("trà sữa")) {
+    const currentPage = dto.currentPage;
+    const text = dto.message.toLowerCase();
+    if (text.includes("trà sữa")) {
       return {
         message: "Để mình tìm trà sữa gần bạn nha",
 
@@ -62,6 +63,97 @@ export class BrainService {
         ]
       };
     }
+    if (
+      (text.includes("nhắn") || text.includes("nhắn tin")) &&
+      (text.includes("shop") || text.includes("quán")) &&
+      (
+        text.includes("order vừa đặt") ||
+        text.includes("đơn vừa đặt") ||
+        text.includes("shop sau với order vừa đặt") ||
+        text.includes("shop sau đơn vừa đặt")
+      )
+    ) {
+      return {
+        message: "Để mình mở chat của shop từ đơn vừa đặt rồi nhắn giúp bạn nha~ 💬",
+        feActions: [],
+        beActions: [
+          {
+            id: "be_1",
+            type: "FIND_CUSTOMER_ORDER",
+            payload: {
+              rank: 1
+            }
+          },
+          {
+            id: "be_2",
+            type: "FIND_ORDER_CONVERSATION",
+            payload: {}
+          }
+        ]
+      };
+    }
+
+    if (
+      text.includes("đọc") &&
+      (text.includes("3 tin nhắn") || text.includes("ba tin nhắn")) &&
+      text.includes("shop mới order")
+    ) {
+      return {
+        message: "Để mình đọc 3 tin nhắn của shop mới order nha~",
+        feActions: [],
+        beActions: [
+          {
+            id: "be_1",
+            type: "FIND_CUSTOMER_ORDER",
+            payload: {
+              rank: 1
+            }
+          },
+          {
+            id: "be_2",
+            type: "FIND_ORDER_CONVERSATION"
+          },
+          {
+            id: "be_3",
+            type: "GET_RECENT_MESSAGES",
+            payload: {
+              limit: 3
+            }
+          }
+        ]
+      };
+    }
+
+    if (
+      text.includes("đọc") &&
+      text.includes("3 tin nhắn")
+    ) {
+      const ctx = dto.context || {};
+      if (currentPage === "chat_detail" && ctx.conversationId) {
+        return {
+          message: "Để mình đọc 3 tin nhắn gần nhất của đoạn chat này nha~",
+          feActions: [],
+          beActions: [
+            {
+              id: "be_1",
+              type: "GET_CONVERSATION_MESSAGES",
+              payload: {
+                conversationId: ctx.conversationId,
+                limit: 3
+              }
+            }
+          ]
+        };
+      }
+
+      return {
+        message: "Mình chưa biết bạn muốn đọc tin nhắn nào nè~ hãy mở đúng đoạn chat trước nha.",
+        feActions: [],
+        beActions: []
+      };
+    }
+
+
 
     return {
       message: "Mình chưa hiểu ý bạn nyaa~ 😢",
@@ -96,26 +188,95 @@ export class BrainService {
   //     return JSON.parse(res.choices[0].message.content!);
   //   }
   async buildResponse(context: any) {
+    // 1️⃣ flow chat trước
+    if (context.conversation?._id && context.messages?.length) {
+      const ordered = [...context.messages].reverse();
+
+      const textToRead = ordered
+        .map((m: any, index: number) => {
+          const senderName =
+            typeof m.senderId === "object" ? m.senderId.name : "Người dùng";
+
+          const content =
+            typeof m.data === "string"
+              ? m.data
+              : m.data?.message || "Tin nhắn đặc biệt";
+
+          return `Tin ${index + 1}, ${senderName} nói: ${content}`;
+        })
+        .join(". ");
+
+      return {
+        message: "Mình mở đoạn chat của shop mới order rồi đọc 3 tin nhắn cho bạn nè~",
+        actions: [
+          {
+            type: "NAVIGATE",
+            delay: 0,
+            payload: {
+              url: `/(stack)/chat/${context.conversation._id}`,
+              id: context.conversation._id.toString(),
+            }
+          },
+          {
+            type: "READ_CHAT_MESSAGES",
+            delay: 900,
+            payload: {
+              conversationId: context.conversation._id.toString(),
+              text: textToRead
+            }
+          }
+        ]
+      };
+    }
+
+    // 2️⃣ flow nhắn tin
+    if (context.conversation?._id) {
+      return {
+        message: "Mình mở đoạn chat và nhắn cho shop rồi nè~ 💬",
+        actions: [
+          {
+            type: "NAVIGATE",
+            delay: 0,
+            payload: {
+              url: `/(stack)/chat/${context.conversation._id}`,
+              id: context.conversation._id.toString(),
+            }
+          },
+          {
+            type: "SET_CHAT_INPUT",
+            delay: 500,
+            payload: {
+              conversationId: context.conversation._id.toString(),
+              text: "chào bạn ,tôi là đệ"
+            }
+          },
+          {
+            type: "SUBMIT_CHAT_MESSAGE",
+            delay: 1200,
+            payload: {
+              conversationId: context.conversation._id.toString()
+            }
+          }
+        ]
+      };
+    }
+    // 3️⃣ flow product
     const item = context.product?.[0];
     if (!item) {
       return {
-        message: "Không tìm thấy sản phẩm nyaa 😭",
+        message: "Không tìm thấy dữ liệu phù hợp nyaa 😭",
         actions: []
       };
     }
 
     const product = item.products;
-
-    // 🎯 chọn size mặc định
-    const size = product.sizes?.find(s => s.isDefault) || product.sizes?.[0];
-
-    // 🎯 chọn topping (ví dụ: chọn 1 cái đầu)
+    const size = product.sizes?.find((s: any) => s.isDefault) || product.sizes?.[0];
     const toppingList = product.toppings || [];
     const selectedToppings = toppingList.slice(0, 1);
 
-    const toppingIds = selectedToppings.map(t => t._id);
-    const toppingNames = selectedToppings.map(t => t.name);
-    const toppingPrice = selectedToppings.reduce((sum, t) => sum + t.price, 0);
+    const toppingIds = selectedToppings.map((t: any) => t._id);
+    const toppingNames = selectedToppings.map((t: any) => t.name);
+    const toppingPrice = selectedToppings.reduce((sum: number, t: any) => sum + t.price, 0);
 
     return {
       message: "Mình đã thêm món, điền thông tin và đặt hàng giúp bạn luôn nè 🧋✨",
@@ -126,20 +287,15 @@ export class BrainService {
           payload: {
             shopId: item.user._id,
             shopName: item.user.name,
-
             productId: product._id,
             productName: product.name,
-
             basePrice: product.basePrice,
-
             sizeId: size?._id?.toString() || "",
             sizeName: size?.name || "",
             sizePrice: size?.price || 0,
-
             toppingIds,
             toppingNames,
             toppingPrice,
-
             quantity: 1,
             image: product.image || ""
           }

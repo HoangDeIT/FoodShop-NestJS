@@ -1,13 +1,17 @@
 import { Injectable } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { SoftDeleteModel } from "soft-delete-plugin-mongoose";
+import { Conversation, ConversationDocument } from "src/chats/schemas/conversation.schema";
 import { Location, LocationDocument } from "src/locations/schemas/location.schema";
+import { Order, OrderDocument } from "src/orders/schemas/order.schema";
 
 @Injectable()
 export class DomainService {
     constructor(
         @InjectModel(Location.name) private readonly locationModel: SoftDeleteModel<LocationDocument>,
+        @InjectModel(Order.name) private readonly orderModel: SoftDeleteModel<OrderDocument>,
+        @InjectModel(Conversation.name) private readonly conversationModel: SoftDeleteModel<ConversationDocument>,
     ) { }
     async searchProductsAdvanced(params: {
         keyword?: string;
@@ -386,5 +390,47 @@ export class DomainService {
 
         return result;
     }
+    async findCustomerOrdersForAI(params: {
+        customerId: string;
+        rank?: number;
+        statuses?: string[];
+    }) {
+        const { customerId, rank = 1, statuses } = params;
 
+        const query: any = {
+            customer: new Types.ObjectId(customerId),
+            isDeleted: false,
+        };
+
+        if (statuses?.length) {
+            query.orderStatus = { $in: statuses };
+        }
+
+        const skip = Math.max(rank - 1, 0);
+
+        return this.orderModel
+            .findOne(query)
+            .populate([
+                { path: "shop", select: "name email" },
+                { path: "customer", select: "name email" },
+                { path: "deliveryAddress" },
+            ])
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .lean();
+    }
+    async findOrCreateConversation(userA: string, userB: string) {
+        let convo = await this.conversationModel.findOne({
+            participants: { $all: [userA, userB] },
+        });
+
+        if (!convo) {
+            convo = await this.conversationModel.create({
+                participants: [userA, userB],
+                createdAt: new Date(),
+            });
+        }
+
+        return convo;
+    }
 }

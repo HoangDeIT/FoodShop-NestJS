@@ -1,9 +1,13 @@
-import { IsString, IsArray } from "class-validator";
+import { IsString, IsArray, ValidateNested } from "class-validator";
+import { ActionDto } from "./action.dto";
+import { Type } from "class-transformer";
 
 export class VoiceExecuteResponseDto {
     @IsString()
     message!: string;
 
     @IsArray()
-    results!: any[];
+    @ValidateNested({ each: true })
+    @Type(() => ActionDto)
+    actions!: ActionDto[];
 }
