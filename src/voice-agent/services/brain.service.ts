@@ -1,68 +1,79 @@
 import { Injectable } from "@nestjs/common";
-import OpenAI from "openai";
 import { VoiceRequestDto } from "../dto/voice-request.dto";
 
 @Injectable()
 export class BrainService {
-  private openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-  //   async plan(dto: any) {
-  //     const prompt = `
-  // User: "${dto.message}"
-
-  // Trả JSON:
-  // {
-  //   "message": "...",
-  //   "feActions": [
-  //     { "id": "a1", "type": "REQUEST_LOCATION" }
-  //   ],
-  //   "beActions": [
-  //     { "id": "a2", "type": "FIND_NEAREST_PRODUCT" }
-  //   ]
-  // }
-  // `;
-
-  //     const res = await this.openai.chat.completions.create({
-  //       model: "gpt-4.1-mini",
-  //       messages: [{ role: "user", content: prompt }],
-  //       response_format: { type: "json_object" }
-  //     });
-
-  //     return JSON.parse(res.choices[0].message.content!);
-  //   } 
-
   async plan(dto: VoiceRequestDto) {
-    // 👉 hardcode để test trước (sau thay bằng GPT)
     const currentPage = dto.currentPage;
+    const ctx = dto.context || {};
     const text = dto.message.toLowerCase();
+
+    const productId = ctx.productId || ctx.product?._id;
+    const isProductDetailPage = currentPage === "product_detail" && !!productId;
+    const wantsReviewSummary =
+      /(tổng hợp|tóm tắt|summary|nhận xét)/i.test(text) &&
+      /(bình luận|đánh giá|review|comment)/i.test(text);
+    const wantsReviewComment =
+      /(bình luận|đánh giá|review|comment)/i.test(text) &&
+      /(viết|gửi|đăng|cho|giúp)/i.test(text);
+
+    if (isProductDetailPage && wantsReviewSummary) {
+      return {
+        message: "Để mình tổng hợp bình luận gần nhất của món này nha~",
+        feActions: [],
+        beActions: [
+          {
+            id: "be_review_summary_1",
+            type: "GET_PRODUCT_REVIEWS_CONTEXT",
+            payload: {
+              productId,
+              limit: 10,
+              intent: "summarize_reviews",
+            },
+          },
+        ],
+      };
+    }
+
+    if (isProductDetailPage && wantsReviewComment) {
+      return {
+        message: "Để mình điền đánh giá giúp bạn nha~",
+        feActions: [],
+        beActions: [
+          {
+            id: "be_review_comment_1",
+            type: "GET_PRODUCT_REVIEWS_CONTEXT",
+            payload: {
+              productId,
+              limit: 10,
+              intent: "submit_review",
+            },
+          },
+        ],
+      };
+    }
+
     if (text.includes("trà sữa")) {
       return {
         message: "Để mình tìm trà sữa gần bạn nha",
-
-        // 👉 FE phải làm trước
         feActions: [
-          // {
-          //   id: "fe_1",
-          //   type: "REQUEST_LOCATION"
-          // },
           {
             id: "fe_2",
-            type: "CLEAR_CART"
-          }
+            type: "CLEAR_CART",
+          },
         ],
-
-        // 👉 BE sẽ làm sau
         beActions: [
           {
             id: "be_1",
             type: "FIND_PRODUCTS",
             payload: {
-              keyword: "trà sữa"
-            }
-          }
-        ]
+              keyword: "trà sữa",
+            },
+          },
+        ],
       };
     }
+
     if (
       (text.includes("nhắn") || text.includes("nhắn tin")) &&
       (text.includes("shop") || text.includes("quán")) &&
@@ -81,15 +92,15 @@ export class BrainService {
             id: "be_1",
             type: "FIND_CUSTOMER_ORDER",
             payload: {
-              rank: 1
-            }
+              rank: 1,
+            },
           },
           {
             id: "be_2",
             type: "FIND_ORDER_CONVERSATION",
-            payload: {}
-          }
-        ]
+            payload: {},
+          },
+        ],
       };
     }
 
@@ -106,29 +117,25 @@ export class BrainService {
             id: "be_1",
             type: "FIND_CUSTOMER_ORDER",
             payload: {
-              rank: 1
-            }
+              rank: 1,
+            },
           },
           {
             id: "be_2",
-            type: "FIND_ORDER_CONVERSATION"
+            type: "FIND_ORDER_CONVERSATION",
           },
           {
             id: "be_3",
             type: "GET_RECENT_MESSAGES",
             payload: {
-              limit: 3
-            }
-          }
-        ]
+              limit: 3,
+            },
+          },
+        ],
       };
     }
 
-    if (
-      text.includes("đọc") &&
-      text.includes("3 tin nhắn")
-    ) {
-      const ctx = dto.context || {};
+    if (text.includes("đọc") && text.includes("3 tin nhắn")) {
       if (currentPage === "chat_detail" && ctx.conversationId) {
         return {
           message: "Để mình đọc 3 tin nhắn gần nhất của đoạn chat này nha~",
@@ -139,56 +146,91 @@ export class BrainService {
               type: "GET_CONVERSATION_MESSAGES",
               payload: {
                 conversationId: ctx.conversationId,
-                limit: 3
-              }
-            }
-          ]
+                limit: 3,
+              },
+            },
+          ],
         };
       }
 
       return {
         message: "Mình chưa biết bạn muốn đọc tin nhắn nào nè~ hãy mở đúng đoạn chat trước nha.",
         feActions: [],
-        beActions: []
+        beActions: [],
       };
     }
-
-
 
     return {
       message: "Mình chưa hiểu ý bạn nyaa~ 😢",
       feActions: [],
-      beActions: []
+      beActions: [],
     };
   }
-  //   async buildResponse(input: any) {
-  //     const prompt = `
-  // User: ${input.userInput}
 
-  // Data từ hệ thống:
-  // ${JSON.stringify(input.data)}
-
-  // Trả JSON:
-  // {
-  //   "message": "...",
-  //   "actions": [
-  //     { "type": "ADD_TO_CART", "payload": {} },
-  //     { "type": "ORDER", "payload": {} }
-  //   ],
-  //   "requiresInput": false
-  // }
-  // `;
-
-  //     const res = await this.openai.chat.completions.create({
-  //       model: "gpt-4.1-mini",
-  //       messages: [{ role: "user", content: prompt }],
-  //       response_format: { type: "json_object" }
-  //     });
-
-  //     return JSON.parse(res.choices[0].message.content!);
-  //   }
   async buildResponse(context: any) {
-    // 1️⃣ flow chat trước
+    if (context.reviewTarget?.product?._id) {
+      const productId = context.reviewTarget.product._id;
+      const productName = context.reviewTarget.product.name || "món này";
+      const recentReviews = context.reviewTarget.recentReviews || [];
+
+      if (context.reviewIntent === "summarize_reviews") {
+        return {
+          message:
+            recentReviews.length > 0
+              ? `${productName} được review gần đây là ngon.`
+              : `${productName} chưa có nhiều review, nhưng fake AI vẫn thấy là ngon.`,
+          actions: [],
+        };
+      }
+
+      if (context.reviewIntent === "submit_review") {
+        const needsNavigation = context.ui?.currentPage !== "product_detail";
+        const actions: any[] = [];
+
+        if (needsNavigation) {
+          actions.push({
+            type: "NAVIGATE",
+            delay: 0,
+            payload: {
+              url: `/(stack)/product/${productId}`,
+            },
+          });
+        }
+
+        actions.push(
+          {
+            type: "SET_REVIEW_RATING",
+            delay: needsNavigation ? 700 : 0,
+            payload: {
+              productId,
+              rating: 5,
+            },
+          },
+          {
+            type: "SET_REVIEW_TEXT",
+            delay: needsNavigation ? 1000 : 300,
+            payload: {
+              productId,
+              text: "Món ăn rất ngon",
+              reviewContext: context.reviewTarget.reviewPromptContext,
+            },
+          },
+          {
+            type: "SUBMIT_REVIEW",
+            delay: needsNavigation ? 1400 : 700,
+            payload: {
+              productId,
+            },
+          }
+        );
+
+        return {
+          message: `Mình đã chuẩn bị review 5 sao cho ${productName} rồi nè~`,
+          actions,
+        };
+      }
+    }
+
     if (context.conversation?._id && context.messages?.length) {
       const ordered = [...context.messages].reverse();
 
@@ -215,21 +257,20 @@ export class BrainService {
             payload: {
               url: `/(stack)/chat/${context.conversation._id}`,
               id: context.conversation._id.toString(),
-            }
+            },
           },
           {
             type: "READ_CHAT_MESSAGES",
             delay: 900,
             payload: {
               conversationId: context.conversation._id.toString(),
-              text: textToRead
-            }
-          }
-        ]
+              text: textToRead,
+            },
+          },
+        ],
       };
     }
 
-    // 2️⃣ flow nhắn tin
     if (context.conversation?._id) {
       return {
         message: "Mình mở đoạn chat và nhắn cho shop rồi nè~ 💬",
@@ -240,32 +281,32 @@ export class BrainService {
             payload: {
               url: `/(stack)/chat/${context.conversation._id}`,
               id: context.conversation._id.toString(),
-            }
+            },
           },
           {
             type: "SET_CHAT_INPUT",
             delay: 500,
             payload: {
               conversationId: context.conversation._id.toString(),
-              text: "chào bạn ,tôi là đệ"
-            }
+              text: "chào bạn ,tôi là đệ",
+            },
           },
           {
             type: "SUBMIT_CHAT_MESSAGE",
             delay: 1200,
             payload: {
-              conversationId: context.conversation._id.toString()
-            }
-          }
-        ]
+              conversationId: context.conversation._id.toString(),
+            },
+          },
+        ],
       };
     }
-    // 3️⃣ flow product
+
     const item = context.product?.[0];
     if (!item) {
       return {
         message: "Không tìm thấy dữ liệu phù hợp nyaa 😭",
-        actions: []
+        actions: [],
       };
     }
 
@@ -297,42 +338,42 @@ export class BrainService {
             toppingNames,
             toppingPrice,
             quantity: 1,
-            image: product.image || ""
-          }
+            image: product.image || "",
+          },
         },
         {
           type: "NAVIGATE",
           delay: 300,
-          payload: { url: "/cart" }
+          payload: { url: "/cart" },
         },
         {
           type: "NAVIGATE",
           delay: 500,
-          payload: { url: "/(stack)/checkout" }
+          payload: { url: "/(stack)/checkout" },
         },
         {
           type: "SET_CHECKOUT_INFO",
           delay: 900,
           payload: {
             receiverName: "Hoàng Đệ",
-            receiverPhone: "0909123456"
-          }
+            receiverPhone: "0909123456",
+          },
         },
         {
           type: "SUBMIT_ORDER",
           delay: 1400,
-          payload: {}
+          payload: {},
         },
         {
           type: "NAVIGATE",
           delay: 2200,
           payload: {
             url: "/(tabs)/order",
-            isRefresh: true
-          }
-        }
+            isRefresh: true,
+          },
+        },
       ],
-      requiresInput: false
+      requiresInput: false,
     };
   }
 }

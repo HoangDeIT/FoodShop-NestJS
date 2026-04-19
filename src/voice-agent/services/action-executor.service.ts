@@ -13,7 +13,14 @@ export class ActionExecutorService {
         private readonly domainServices: DomainService,
         private readonly chatsService: ChatsService
     ) { }
-    async executeBatch(beActions: any[], feActions: any[], userId: string) {
+    async executeBatch(
+        message: string,
+        currentPage: string,
+        uiContext: Record<string, any>,
+        beActions: any[],
+        feActions: any[],
+        userId: string
+    ) {
         // ❌ nếu FE fail → dừng
         const failedFE = feActions.find(a => a.status === "failed");
         const user = await this.usersService.findOne({ id: userId });
@@ -35,7 +42,13 @@ export class ActionExecutorService {
             };
         }
         // 🌸 context chung (thay vì product)
-        const context: any = {};
+        const context: any = {
+            userInput: message,
+            ui: {
+                currentPage,
+                context: uiContext,
+            }
+        };
 
         // 👉 STEP 1: BE xử lý → build context
         for (const action of beActions) {
@@ -98,6 +111,21 @@ export class ActionExecutorService {
                     );
                     context.conversation = { _id: action.payload.conversationId };
                     break;
+                case "GET_PRODUCT_REVIEWS_CONTEXT": {
+                    const productId =
+                        action.payload?.productId ||
+                        uiContext?.productId ||
+                        uiContext?.product?._id;
+
+                    if (!productId) break;
+
+                    context.reviewTarget = await this.domainServices.getProductReviewContext({
+                        productId,
+                        limit: action.payload?.limit ?? 10,
+                    });
+                    context.reviewIntent = action.payload?.intent;
+                    break;
+                }
                 default:
                     break;
             }
@@ -109,7 +137,8 @@ export class ActionExecutorService {
             !!context.store ||
             !!context.order ||
             !!context.conversation ||
-            !!context.messages;
+            !!context.messages ||
+            !!context.reviewTarget;
 
         if (!hasContextData) {
             return {

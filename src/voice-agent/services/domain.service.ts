@@ -5,6 +5,8 @@ import { SoftDeleteModel } from "soft-delete-plugin-mongoose";
 import { Conversation, ConversationDocument } from "src/chats/schemas/conversation.schema";
 import { Location, LocationDocument } from "src/locations/schemas/location.schema";
 import { Order, OrderDocument } from "src/orders/schemas/order.schema";
+import { Product, ProductDocument } from "src/products/schemas/product.schema";
+import { Review, ReviewDocument } from "src/reviews/schemas/review.schema";
 
 @Injectable()
 export class DomainService {
@@ -12,6 +14,8 @@ export class DomainService {
         @InjectModel(Location.name) private readonly locationModel: SoftDeleteModel<LocationDocument>,
         @InjectModel(Order.name) private readonly orderModel: SoftDeleteModel<OrderDocument>,
         @InjectModel(Conversation.name) private readonly conversationModel: SoftDeleteModel<ConversationDocument>,
+        @InjectModel(Review.name) private readonly reviewModel: SoftDeleteModel<ReviewDocument>,
+        @InjectModel(Product.name) private readonly productModel: SoftDeleteModel<ProductDocument>,
     ) { }
     async searchProductsAdvanced(params: {
         keyword?: string;
@@ -432,5 +436,55 @@ export class DomainService {
         }
 
         return convo;
+    }
+
+    async getProductReviewContext(params: { productId: string; limit?: number }) {
+        const { productId, limit = 10 } = params;
+
+        if (!Types.ObjectId.isValid(productId)) {
+            return null;
+        }
+
+        const product = await this.productModel
+            .findById(productId)
+            .populate("seller", "name avatar")
+            .lean();
+
+        if (!product) {
+            return null;
+        }
+
+        const recentReviews = await this.reviewModel
+            .find({
+                product: new Types.ObjectId(productId),
+                isDeleted: false,
+            })
+            .populate("user", "name avatar")
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .lean();
+
+        return {
+            product: {
+                _id: product._id?.toString(),
+                name: product.name,
+                image: product.image,
+                seller: product.seller,
+            },
+            recentReviews: recentReviews.map((review: any) => ({
+                _id: review._id?.toString(),
+                rating: review.rating,
+                comment: review.comment,
+                createdAt: review.createdAt,
+                user: review.user,
+            })),
+            reviewPromptContext: recentReviews.map((review: any) => ({
+                rating: review.rating,
+                comment: review.comment,
+                reviewerName:
+                    typeof review.user === "object" ? review.user?.name || "Anonymous" : "Anonymous",
+                createdAt: review.createdAt,
+            })),
+        };
     }
 }

@@ -1,10 +1,17 @@
-import { IsString, IsArray, ValidateNested } from "class-validator";
+import { IsString, IsArray, ValidateNested, IsObject, IsOptional } from "class-validator";
 import { Type } from "class-transformer";
 import { ActionDto } from "./action.dto";
 
 export class VoiceExecuteRequestDto {
     @IsString()
     message!: string;
+
+    @IsString()
+    currentPage!: string;
+
+    @IsOptional()
+    @IsObject()
+    context?: Record<string, any>;
 
     @IsArray()
     @ValidateNested({ each: true })

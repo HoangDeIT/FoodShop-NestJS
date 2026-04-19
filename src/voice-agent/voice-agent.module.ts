@@ -22,6 +22,7 @@ import { Conversation, ConversationSchema } from 'src/chats/schemas/conversation
 import { Message, MessageSchema } from 'src/chats/schemas/message.schema';
 import { ExpoNotifyService } from 'src/notifications/expo-notify.service';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { Product, ProductSchema } from 'src/products/schemas/product.schema';
 
 
 
@@ -38,7 +39,8 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
     { name: SellerProfile.name, schema: SellerProfileSchema },
     { name: Order.name, schema: OrderSchema },
     { name: Conversation.name, schema: ConversationSchema },
-    { name: Message.name, schema: MessageSchema }
+    { name: Message.name, schema: MessageSchema },
+    { name: Product.name, schema: ProductSchema }
 
   ]), LocationsModule, UsersModule, ChatsModule, NotificationsModule],
 })

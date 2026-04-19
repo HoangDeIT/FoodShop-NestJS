@@ -20,6 +20,9 @@ export class VoiceController {
   @Post("execute")
   async execute(@Body() dto: VoiceExecuteRequestDto, @User() user) {
     return this.executor.executeBatch(
+      dto.message,
+      dto.currentPage,
+      dto.context || {},
       dto.beActions,
       dto.feActions,
       user._id
